@@ -203,8 +203,10 @@
 
 	const onSelect = async (e) => {
 		const { type, data } = e;
-
+             console.log('data:',data,'type:',type)
 		if (type === 'prompt') {
+
+		    console.log('$settings?.insertSuggestionPrompt:',$settings?.insertSuggestionPrompt)
 			// Handle prompt selection
 			messageInput?.setText(data, async () => {
 				if (!($settings?.insertSuggestionPrompt ?? false)) {

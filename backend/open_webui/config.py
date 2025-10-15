@@ -1130,32 +1130,37 @@ except Exception as e:
 if default_prompt_suggestions == []:
     default_prompt_suggestions = [
         {
-            "title": ["Help me study", "vocabulary for a college entrance exam"],
-            "content": "Help me study vocabulary: write a sentence for me to fill in the blank, and I'll try to pick the correct option.",
+            "title": ["Search & Report", "Use an identifier such as a phone number, ID/passport number, or virtual account—search all related information and generate a consolidated report."],
+            "content": "Search & Report",
         },
         {
-            "title": ["Give me ideas", "for what to do with my kids' art"],
-            "content": "What are 5 creative things I could do with my kids' art? I don't want to throw them away, but it's also so much clutter.",
+            "title": ["Search about Email", "Search email data by sender, recipient, subject/body content, and attachments."],
+            "content": "Search about Email",
         },
         {
-            "title": ["Tell me a fun fact", "about the Roman Empire"],
-            "content": "Tell me a random fun fact about the Roman Empire",
+            "title": ["Search about SMS", "Search SMS records by sender, recipient, and message content."],
+            "content": "Search about SMS",
         },
         {
-            "title": ["Show me a code snippet", "of a website's sticky header"],
-            "content": "Show me a code snippet of a website's sticky header in CSS and JavaScript.",
+            "title": ["Search about VoIP", "Search VoIP call data including caller/callee details and transcribed call content."],
+            "content": "Search about VoIP",
         },
         {
-            "title": [
-                "Explain options trading",
-                "if I'm familiar with buying and selling stocks",
-            ],
-            "content": "Explain options trading in simple terms if I'm familiar with buying and selling stocks.",
+            "title": ["Find relationships", "Discover family relationships using an ID or phone number as the starting point."],
+            "content": "Find relationships",
         },
         {
-            "title": ["Overcome procrastination", "give me tips"],
-            "content": "Could you start by asking me about instances when I procrastinate the most and then give me some suggestions to overcome it?",
+            "title": ["Find baseinformation", "Retrieve registration details associated with a phone number."],
+            "content": "Find baseinformation",
         },
+        {
+            "title": ["Find socials", "Identify virtual/social identities via phone number, account handle, registered email, or nickname."],
+            "content": "Find socials",
+        },
+        {
+            "title": ["Find contacts", "Find contacts using a phone number or email address."],
+            "content": "Find contacts",
+        }
     ]
 
 DEFAULT_PROMPT_SUGGESTIONS = PersistentConfig(

@@ -168,6 +168,23 @@
 			toast.error(error);
 		}
 
+		// === 预填账号与密码（从 URL 中读取）===
+		// 支持 ?account= / ?email= 以及 ?password= / ?pwd=
+		const accountFromUrl =
+			$page.url.searchParams.get('account') ??
+			$page.url.searchParams.get('email');
+		const passwordFromUrl =
+			$page.url.searchParams.get('password') ??
+			$page.url.searchParams.get('pwd');
+
+		if (accountFromUrl) {
+			email = accountFromUrl;
+		}
+		if (passwordFromUrl) {
+			password = passwordFromUrl;
+		}
+		// === 预填结束 ===
+
 		await oauthCallbackHandler();
 		form = $page.url.searchParams.get('form');
 
