@@ -33,7 +33,6 @@ class Tools:
         - get_basic_info      Query basic person information
         - get_location_info   Query location information
         - get_contacts        Query contacts list
-        - get_cdr             Query call detail records (CDR)
         - get_company_info    Query company registration information
 
     Unified response format:
@@ -227,73 +226,6 @@ class Tools:
                     "last_contact_time": "2025-11-20 17:30:00",
                 },
             ][:limit]
-        }
-
-        return self._ok(data)
-
-    # ============================================================
-    # 4. 查询 CDR（通话详单）
-    # ============================================================
-    def get_cdr(
-        self,
-        phone: Optional[str] = None,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        direction: str = "all",
-        limit: int = 50,
-    ) -> Dict[str, Any]:
-        """
-        Query Call Detail Records (CDR) (mock).
-        Parameter `phone` is required.
-        """
-
-        if not phone:
-            return self._err(
-                "Missing required parameter: 'phone'.",
-                ["phone"],
-                "To query call detail records, please provide the target phone number."
-            )
-
-        # ——模拟数据（mock data）——
-        all_cdr = [
-            {
-                "call_id": "CDR202511280001",
-                "from": phone,
-                "to": "96890002233",
-                "start_time": "2025-11-28 10:15:00",
-                "duration_sec": 180,
-                "direction": "out",
-            },
-            {
-                "call_id": "CDR202511270045",
-                "from": "96890003344",
-                "to": phone,
-                "start_time": "2025-11-27 22:05:30",
-                "duration_sec": 60,
-                "direction": "in",
-            },
-        ]
-
-        # 根据方向过滤
-        if direction in ("in", "out"):
-            cdr_list = [c for c in all_cdr if c["direction"] == direction]
-        else:
-            cdr_list = all_cdr
-
-        cdr_list = cdr_list[:limit]
-
-        data = {
-            "target_phone": phone,
-            "query_time_range": {
-                "start_time": start_time or "2025-11-20 00:00:00",
-                "end_time": end_time or "2025-11-29 23:59:59",
-            },
-            "direction": direction,
-            "cdr_list": cdr_list,
-            "summary": {
-                "total_calls": len(cdr_list),
-                "total_duration_sec": sum(c["duration_sec"] for c in cdr_list)
-            }
         }
 
         return self._ok(data)
