@@ -1,0 +1,91 @@
+统一返回
+{code:0,data:{}}/{code:0,data:[]}/{code:500,msg:""}
+
+/business/ai/baseinfo
+ -params id/phone  
+ -return 人物基本信息，如名称/头像地址/id/手机/country/gender
+
+/business/ai/contact
+-params phone/email
+-return 人物联系人信息，phonenum/times
+
+/business/ai/social
+-params account/phone
+-return 虚拟身份信息 {
+						"dataid": "128901_664296@m.facebook.com96879379314664296@m.facebook.com",
+						"protocol": "128901",
+						"account": "664296@m.facebook.com",
+						"phone_no": "96879379314",
+						"create_by": "666",
+						"create_time": "2022-11-08 09:44:25",
+						"last_update_by": "666",
+						"last_update_time": "2022-11-08 09:44:25",
+						"email_address": "664296@m.facebook.com",
+						"address": "",
+						"photo": "",
+						"email_account": "",
+						"user_id": "",
+						"nickname": "",
+						"register_email": "",
+						"register_phone_no": "",
+						"email": ""
+					}
+
+/business/ai/car
+-params phone/car
+-return 车牌号
+
+/business/ai/location
+-params phone 
+-return {
+			bsid:基站id,
+			name:基站名称,
+			latitude:,
+			longitude:
+			
+		}
+
+/business/ai/family
+-params id
+-return   {
+            "id": "Family_133571533",
+            "label": null,
+            "type": "family",
+            "accountType": "FAMILY",
+            "source": null,
+            "target": null,
+            "callType": null,
+            "avatar": null,
+            "carno": null,
+            "birthdate": null,
+            "address": null,
+            "gender": null,
+            "username": null,
+            "idcard": null,
+            "count": null,
+            "model": null,
+            "photo": null,
+            "showType": "FAMILY",
+            "top": null,
+            "expandBy": null,
+            "latitude": null,
+            "name": null,
+            "bsid": null,
+            "longitude": null
+        }
+
+/business/ai/cr
+-params id
+-return 
+ 
+/business/ai/voip
+-params phone
+-return 通话记录
+
+/business/ai/sms
+-params phone
+-return 短信记录
+
+/business/ai/email
+-params email
+-return Email记录
