@@ -2,7 +2,7 @@
 title: Investigation Mock APIs
 author: OneCloudTech Demo
 description: Mock APIs for /business/ai/* (baseinfo, contact, social, cr, voip, sms, email) for Open WebUI tool demo.
-version: 2.0.0
+version: 2.1.0
 """
 
 # ================================================================
@@ -41,8 +41,26 @@ version: 2.0.0
 # ================================================================
 
 from typing import Any, Dict, List, Optional
+import logging
 
 from pydantic import BaseModel, Field
+
+# ----------------------------------------------------------------
+# 常量：社交协议映射（方便未来在返回里使用 / 给 LLM 解释）
+# ----------------------------------------------------------------
+PROTOCOL_MAP: Dict[str, str] = {
+    "147701": "X",          # Twitter
+    "147801": "TikTok",
+    "147501": "Instagram",
+    "147201": "WhatsApp",
+    "147301": "Facebook",
+    "147901": "AddressBook",
+    "128901": "Email",
+    "199901": "LinkedIn",
+}
+
+# 模块级 logger（遵循宿主应用 logging 配置，不主动加 Handler）
+logger = logging.getLogger(__name__)
 
 
 # ================================================================
@@ -67,14 +85,14 @@ class Tools:
            - returns: virtual identity information (protocol, dataid, account, phone)
 
            Protocol mapping (for reference):
-             147701: X (Twitter)
-             147801: TikTok
-             147501: Instagram
-             147201: WhatsApp
-             147301: Facebook
-             147901: Address Book
-             128901: Email
-             199901: LinkedIn
+             147701 -> X (Twitter)
+             147801 -> TikTok
+             147501 -> Instagram
+             147201 -> WhatsApp
+             147301 -> Facebook
+             147901 -> Address Book
+             128901 -> Email
+             199901 -> LinkedIn
 
         4) /business/ai/cr
            - params: id
@@ -124,17 +142,39 @@ class Tools:
             description="If true, use mock data only (no real external APIs).",
         )
 
+    # ------------------------------------------------------------
+    # 初始化
+    # ------------------------------------------------------------
     def __init__(self):
         # 自动加载 Valves 配置
         self.valves = self.Valves()
+        logger.info(
+            "[InvestigationMock] Tools initialized, demo_mode=%s",
+            self.valves.demo_mode,
+        )
 
     # ============================================================
-    # 内部：构造统一格式成功返回
+    # 内部工具方法：日志与参数校验
     # ============================================================
+    @staticmethod
+    def _build_safe_kwargs(**kwargs: Any) -> Dict[str, Any]:
+        """
+        过滤掉值为 None 的参数，避免日志太啰嗦。
+        """
+        return {k: v for k, v in kwargs.items() if v is not None}
+
+    def _log_call(self, func_name: str, **kwargs: Any) -> None:
+        """
+        打印工具调用日志：包括函数名和非空参数。
+        只在后端日志里出现，不会暴露给用户。
+        """
+        safe_kwargs = self._build_safe_kwargs(**kwargs)
+        logger.info("[InvestigationMock] %s called with %s", func_name, safe_kwargs)
+
     @staticmethod
     def _ok(data: Any) -> Dict[str, Any]:
         """
-        Build success response.
+        构造统一格式成功返回。
 
         Returns:
             {
@@ -147,9 +187,6 @@ class Tools:
             "data": data,
         }
 
-    # ============================================================
-    # 内部：构造统一格式错误返回（缺少参数等）
-    # ============================================================
     @staticmethod
     def _err(
         msg: str,
@@ -157,7 +194,7 @@ class Tools:
         ask: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Build error response.
+        构造统一格式错误返回（缺少参数等）。
 
         Basic format:
             {"code": 500, "msg": "..."}
@@ -176,6 +213,58 @@ class Tools:
             body["ask_user_prompt"] = ask
         return body
 
+    # ------------- 参数校验 Helper（减少重复代码） ----------------
+    def _ensure_any_param(
+        self,
+        func_name: str,
+        params: Dict[str, Optional[str]],
+        msg: str,
+        ask: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        检查给定的多个参数中，是否至少有一个不为 None。
+        如果全是 None，则返回错误结构；否则返回 None。
+
+        用法示例：
+            err = self._ensure_any_param(
+                "get_person_basic_info",
+                {"id": id, "phone": phone},
+                "Missing required identifier: you must provide 'id' or 'phone'.",
+                "To query basic information, please provide an ID or a phone number.",
+            )
+            if err:
+                return err
+        """
+        if any(value is not None for value in params.values()):
+            return None
+        missing_keys = list(params.keys())
+        logger.warning(
+            "[InvestigationMock] %s missing params: %s",
+            func_name,
+            missing_keys,
+        )
+        return self._err(msg, missing_keys, ask)
+
+    def _ensure_param(
+        self,
+        func_name: str,
+        name: str,
+        value: Optional[str],
+        msg: str,
+        ask: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        检查单个必填参数是否存在。
+        """
+        if value is not None:
+            return None
+        logger.warning(
+            "[InvestigationMock] %s missing param: %s",
+            func_name,
+            name,
+        )
+        return self._err(msg, [name], ask)
+
     # ============================================================
     # 1) /business/ai/baseinfo
     #    -params id/phone
@@ -191,33 +280,22 @@ class Tools:
         /business/ai/baseinfo (MOCK)
 
         Query basic person information by id or phone.
-
-        Parameters
-        ----------
-        id : str, optional
-            Person ID (e.g. national ID, internal person id, etc.).
-        phone : str, optional
-            Phone number of the person.
-        query_id : str, optional
-            Optional query trace id, used only for logging/tracking.
-
-        Behavior
-        --------
-        - If both id and phone are missing, returns an error with
-          missing_params and ask_user_prompt.
-        - Otherwise returns a mock object representing:
-            name / avatar_url / id / phone / country / gender
-
-        Unified response:
-            Success: { "code": 0, "data": { ... } }
-            Error  : { "code": 500, "msg": "...", ... }
         """
-        if not id and not phone:
-            return self._err(
-                "Missing required identifier: you must provide 'id' or 'phone'.",
-                ["id", "phone"],
-                "To query basic information, please provide an ID or a phone number.",
-            )
+        self._log_call(
+            "get_person_basic_info",
+            id=id,
+            phone=phone,
+            query_id=query_id,
+        )
+
+        err = self._ensure_any_param(
+            "get_person_basic_info",
+            {"id": id, "phone": phone},
+            "Missing required identifier: you must provide 'id' or 'phone'.",
+            "To query basic information, please provide an ID or a phone number.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data）——
         data = {
@@ -246,35 +324,22 @@ class Tools:
         /business/ai/contact (MOCK)
 
         Query person's contact statistics by phone or email.
-
-        Parameters
-        ----------
-        phone : str, optional
-            Phone number of the person.
-        email : str, optional
-            Email address of the person.
-        query_id : str, optional
-            Optional query trace id.
-
-        Behavior
-        --------
-        - At least one of phone or email must be provided.
-        - Returns a list of contacts with fields like:
-            {
-                "contact_type": "phone" or "email",
-                "contact": "...",
-                "times": 123
-            }
-
-        Unified response:
-            { "code": 0, "data": [ ... ] }
         """
-        if not phone and not email:
-            return self._err(
-                "Missing required identifier: you must provide 'phone' or 'email'.",
-                ["phone", "email"],
-                "To query contacts, please provide a phone number or an email address.",
-            )
+        self._log_call(
+            "get_contact_statistics",
+            phone=phone,
+            email=email,
+            query_id=query_id,
+        )
+
+        err = self._ensure_any_param(
+            "get_contact_statistics",
+            {"phone": phone, "email": email},
+            "Missing required identifier: you must provide 'phone' or 'email'.",
+            "To query contacts, please provide a phone number or an email address.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data）——
         target = phone or email
@@ -319,35 +384,22 @@ class Tools:
         /business/ai/social (MOCK)
 
         Query virtual identity information by social account or phone.
-
-        Parameters
-        ----------
-        account : str, optional
-            Social account (e.g. username, email-style account).
-        phone : str, optional
-            Phone number used to register or bind the social accounts.
-        query_id : str, optional
-            Optional query trace id.
-
-        Behavior
-        --------
-        - At least one of account or phone must be provided.
-        - Returns a list of virtual identity records with fields such as:
-            {
-                "dataid": "128901_xxx",   # unique key in your system
-                "protocol": "128901",     # see protocol mapping in class docstring
-                "account": "user@example.com",
-                "phone": "+96890001122",
-                "nickname": "Demo Nick",
-                "platform": "Email"
-            }
         """
-        if not account and not phone:
-            return self._err(
-                "Missing required identifier: you must provide 'account' or 'phone'.",
-                ["account", "phone"],
-                "To query social identities, please provide a social account or a phone number.",
-            )
+        self._log_call(
+            "get_social_accounts",
+            account=account,
+            phone=phone,
+            query_id=query_id,
+        )
+
+        err = self._ensure_any_param(
+            "get_social_accounts",
+            {"account": account, "phone": phone},
+            "Missing required identifier: you must provide 'account' or 'phone'.",
+            "To query social identities, please provide a social account or a phone number.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data，根据 aaa.txt 的示例结构）——
         owner = account or phone or ""
@@ -358,7 +410,7 @@ class Tools:
                 "account": owner or "demo_user@m.facebook.com",
                 "phone": phone or "+96890001122",
                 "nickname": "Demo Email",
-                "platform": "Email",
+                "platform": PROTOCOL_MAP.get("128901", "Email"),
             },
             {
                 "dataid": "147301_" + (phone or "demo_facebook"),
@@ -366,7 +418,7 @@ class Tools:
                 "account": "demo_facebook_user",
                 "phone": phone or "+96890001122",
                 "nickname": "Demo FB",
-                "platform": "Facebook",
+                "platform": PROTOCOL_MAP.get("147301", "Facebook"),
             },
         ]
 
@@ -392,26 +444,22 @@ class Tools:
         /business/ai/cr (MOCK)
 
         Query company registration (CR) information.
-
-        Parameters
-        ----------
-        id : str, optional
-            Company registration id or internal company id.
-        query_id : str, optional
-            Optional query trace id.
-
-        Behavior
-        --------
-        - id is required.
-        - Returns company registration info, including:
-            reg_no / name / status / address / legal_person / etc.
         """
-        if not id:
-            return self._err(
-                "Missing required parameter: id.",
-                ["id"],
-                "To query company registration information, please provide a company id.",
-            )
+        self._log_call(
+            "get_company_registration",
+            id=id,
+            query_id=query_id,
+        )
+
+        err = self._ensure_param(
+            "get_company_registration",
+            "id",
+            id,
+            "Missing required parameter: id.",
+            "To query company registration information, please provide a company id.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data）——
         data = {
@@ -441,25 +489,22 @@ class Tools:
         /business/ai/voip (MOCK)
 
         Query VoIP call records by phone.
-
-        Parameters
-        ----------
-        phone : str, optional
-            Phone number of the target person.
-        query_id : str, optional
-            Optional query trace id.
-
-        Behavior
-        --------
-        - phone is required.
-        - Returns a list of VoIP CDRs (call records).
         """
-        if not phone:
-            return self._err(
-                "Missing required parameter: phone.",
-                ["phone"],
-                "To query VoIP call records, please provide a phone number.",
-            )
+        self._log_call(
+            "get_voip_records",
+            phone=phone,
+            query_id=query_id,
+        )
+
+        err = self._ensure_param(
+            "get_voip_records",
+            "phone",
+            phone,
+            "Missing required parameter: phone.",
+            "To query VoIP call records, please provide a phone number.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data）——
         items = [
@@ -503,25 +548,22 @@ class Tools:
         /business/ai/sms (MOCK)
 
         Query SMS records by phone.
-
-        Parameters
-        ----------
-        phone : str, optional
-            Phone number of the target person.
-        query_id : str, optional
-            Optional query trace id.
-
-        Behavior
-        --------
-        - phone is required.
-        - Returns a list of SMS records.
         """
-        if not phone:
-            return self._err(
-                "Missing required parameter: phone.",
-                ["phone"],
-                "To query SMS records, please provide a phone number.",
-            )
+        self._log_call(
+            "get_sms_records",
+            phone=phone,
+            query_id=query_id,
+        )
+
+        err = self._ensure_param(
+            "get_sms_records",
+            "phone",
+            phone,
+            "Missing required parameter: phone.",
+            "To query SMS records, please provide a phone number.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data）——
         items = [
@@ -563,25 +605,22 @@ class Tools:
         /business/ai/email (MOCK)
 
         Query Email records by email address.
-
-        Parameters
-        ----------
-        email : str, optional
-            Email address of the target person.
-        query_id : str, optional
-            Optional query trace id.
-
-        Behavior
-        --------
-        - email is required.
-        - Returns a list of email records.
         """
-        if not email:
-            return self._err(
-                "Missing required parameter: email.",
-                ["email"],
-                "To query email records, please provide an email address.",
-            )
+        self._log_call(
+            "get_email_records",
+            email=email,
+            query_id=query_id,
+        )
+
+        err = self._ensure_param(
+            "get_email_records",
+            "email",
+            email,
+            "Missing required parameter: email.",
+            "To query email records, please provide an email address.",
+        )
+        if err:
+            return err
 
         # ——模拟数据（mock data）——
         items = [
