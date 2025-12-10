@@ -2,7 +2,7 @@
 title: ESCT AI Insight
 author: OneCloudTech
 description: Call backend /ai APIs to get person base info, family, contacts, social accounts, locations, VoIP/SMS/Email records, etc.
-version: 0.4.0
+version: 0.5.0
 requirements: requests
 """
 
@@ -18,11 +18,17 @@ class Tools:
     Base path of AIController: /ai
 
     IMPORTANT FOR THE MODEL:
-    - If a tool returns an object with {"found": true, "data": ...},
-      you MUST treat this as a successful lookup, even if the original
-      query parameter (e.g. phone number) does not appear in "data".
-    - Only say "not found" when "found" is false, or when an explicit
-      error is returned.
+    - If a tool returns {"found": true, "data": ...},
+      you MUST treat this as a successful lookup for the provided query_params
+      (ID / passport / phone number).
+    - Only say "not found" when "found" is false, or when an explicit error is returned.
+    - If the result contains a non-empty "images" list, you SHOULD display these
+      images directly in the chat.
+      To control size, use HTML with a max size of 200x200 pixels, e.g.:
+
+        <img src="IMAGE_URL" style="max-width:200px; max-height:200px;" />
+
+      or equivalent markup, so that the displayed image does not exceed 200x200 pixels.
     """
 
     def __init__(self):
@@ -67,6 +73,40 @@ class Tools:
         if isinstance(data, (list, dict)) and len(data) == 0:
             return False
         return True
+
+    def _extract_image_urls(self, data: Any) -> List[str]:
+        """
+        Recursively extract image URLs from the backend data.
+
+        Any string that:
+        - starts with http/https
+        - and ends with common image extensions
+        will be treated as an image URL.
+        """
+        image_urls: List[str] = []
+        exts = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")
+
+        def _walk(value: Any):
+            if isinstance(value, dict):
+                for v in value.values():
+                    _walk(v)
+            elif isinstance(value, list):
+                for v in value:
+                    _walk(v)
+            elif isinstance(value, str):
+                s = value.strip()
+                if (s.startswith("http://") or s.startswith("https://")) and s.lower().endswith(exts):
+                    image_urls.append(s)
+
+        _walk(data)
+        # 去重保持顺序
+        seen = set()
+        uniq: List[str] = []
+        for u in image_urls:
+            if u not in seen:
+                seen.add(u)
+                uniq.append(u)
+        return uniq
 
     def _get(self, path: str, params: Dict[str, Any]) -> Any:
         """
@@ -147,19 +187,22 @@ class Tools:
         - Know which API was called.
         - See the original query parameters (e.g. phone number).
         - Reliably know whether something was found via "found" flag.
+        - See any image URLs detected in the data via "images".
         """
         query_params = self._clean_params(raw_params)
         found = self._normalize_found_flag(data)
+        images = self._extract_image_urls(data)
 
         wrapped = {
             "api": api_path,
             "query_params": query_params,
             "found": found,
             "data": data,
+            "images": images,  # image URL list
         }
 
         self.logger.info(
-            f"API {api_path} finished. found={found}, query_params={query_params}"
+            f"API {api_path} finished. found={found}, query_params={query_params}, images_count={len(images)}"
         )
         return wrapped
 
