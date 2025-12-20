@@ -1,12 +1,12 @@
 """
 title: ESCT AI Insight
 author: OneCloudTech
-description: Call backend /ai APIs to get person base info, family, contacts, social accounts, locations, VoIP/SMS/Email records, etc.
-version: 0.5.0
+description: 调用后端 /ai 接口，查询人员基础信息、家庭、联系人、社交账号、位置、VoIP/SMS/Email 等记录
+version: 0.4.0
 requirements: requests
 """
 
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Tuple
 from pydantic import BaseModel, Field
 import requests
 import logging
@@ -14,30 +14,21 @@ import logging
 
 class Tools:
     """
-    Tool class: map Open WebUI Tool calls to backend AIController APIs.
-    Base path of AIController: /ai
+    工具类：把 Open WebUI Tool 调用映射到后端 AIController 接口。
+    AIController Base Path: /ai
 
-    IMPORTANT FOR THE MODEL:
-    - If a tool returns {"found": true, "data": ...},
-      you MUST treat this as a successful lookup for the provided query_params
-      (ID / passport / phone number).
-    - Only say "not found" when "found" is false, or when an explicit error is returned.
-    - If the result contains a non-empty "images" list, you SHOULD display these
-      images directly in the chat.
-      To control size, use HTML with a max size of 200x200 pixels, e.g.:
-
-        <img src="IMAGE_URL" style="max-width:200px; max-height:200px;" />
-
-      or equivalent markup, so that the displayed image does not exceed 200x200 pixels.
+    重要提示（给模型/调用方看的约束）：
+    - 如果工具返回对象里包含 {"found": true, "data": ...}，
+      即使 data 里没有出现原始查询参数（例如 phone 字段没回显），也必须视为“查到了”。
+    - 只有在 found 为 false，或返回明确 error 时，才能说“未找到”。
     """
 
     def __init__(self):
-        # Do not generate citations in the chat output
+        # 不在聊天输出中生成 citations
         self.citation = False
-        # Configurable valves (e.g. backend URL)
         self.valves = self.Valves()
 
-        # ----- logging setup -----
+        # ----- logging -----
         self.logger = logging.getLogger("ESCT_AI_Insight")
         if not self.logger.handlers:
             logging.basicConfig(
@@ -48,25 +39,26 @@ class Tools:
     class Valves(BaseModel):
         backend_base_url: str = Field(
             "http://192.168.80.185:8654",
-            description="Backend Spring Boot base URL (without /ai), e.g. http://192.168.80.185:8654",
+            description="后端 Spring Boot Base URL（不含 /ai），例如：http://192.168.80.185:8654",
         )
 
-    # ------------ common helper methods ------------
+    # ------------------ 通用工具方法 ------------------
 
     def _build_url(self, path: str) -> str:
+        """拼接后端请求 URL（不含 querystring）"""
         base = self.valves.backend_base_url.rstrip("/")
         return f"{base}{path}"
 
     def _clean_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """清理参数：过滤 None / 空字符串"""
         return {k: v for k, v in params.items() if v is not None and v != ""}
 
     def _normalize_found_flag(self, data: Any) -> bool:
         """
-        Decide whether the lookup should be considered "found":
-
-        - If data is None -> not found
-        - If data is an empty list or empty dict -> not found
-        - Otherwise -> found
+        判断是否“查到”：
+        - data 为 None -> 未找到
+        - data 是空 list / 空 dict -> 未找到
+        - 其它情况 -> 找到
         """
         if data is None:
             return False
@@ -74,106 +66,69 @@ class Tools:
             return False
         return True
 
-    def _extract_image_urls(self, data: Any) -> List[str]:
+    def _build_full_url_with_params(self, url: str, params: Dict[str, Any]) -> str:
         """
-        Recursively extract image URLs from the backend data.
-
-        Any string that:
-        - starts with http/https
-        - and ends with common image extensions
-        will be treated as an image URL.
+        生成“可直接打开”的完整 URL（含 querystring）。
+        注意：使用 requests 的 PreparedRequest 来保证编码正确。
         """
-        image_urls: List[str] = []
-        exts = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")
+        req = requests.Request("GET", url, params=params).prepare()
+        return req.url
 
-        def _walk(value: Any):
-            if isinstance(value, dict):
-                for v in value.values():
-                    _walk(v)
-            elif isinstance(value, list):
-                for v in value:
-                    _walk(v)
-            elif isinstance(value, str):
-                s = value.strip()
-                if (s.startswith("http://") or s.startswith("https://")) and s.lower().endswith(exts):
-                    image_urls.append(s)
-
-        _walk(data)
-        # 去重保持顺序
-        seen = set()
-        uniq: List[str] = []
-        for u in image_urls:
-            if u not in seen:
-                seen.add(u)
-                uniq.append(u)
-        return uniq
-
-    def _get(self, path: str, params: Dict[str, Any]) -> Any:
+    def _get(self, path: str, params: Dict[str, Any]) -> Tuple[Any, str]:
         """
-        Perform actual GET request to backend.
-        Expected AjaxResult structure:
+        发起 GET 请求。
+        期望后端返回 AjaxResult 结构：
         { "code": 200, "msg": "...", "data": ... }
+
+        返回：(data, request_url)
+        - data: body.data 或 raw body
+        - request_url: 最终请求 URL（含 querystring，可直接打开/复制）
         """
         url = self._build_url(path)
         query = self._clean_params(params)
+        request_url = self._build_full_url_with_params(url, query)
 
-        # log request
-        self.logger.info(f"Calling backend GET {url} with params={query}")
+        self.logger.info(f"Calling backend GET {request_url}")
 
         try:
             resp = requests.get(url, params=query, timeout=10)
-            self.logger.info(
-                f"Backend response status={resp.status_code} for {url}"
-            )
+            self.logger.info(f"Backend response status={resp.status_code} for {request_url}")
             resp.raise_for_status()
         except Exception as e:
-            self.logger.error(f"HTTP error while calling {url}: {e}")
+            self.logger.error(f"HTTP error while calling {request_url}: {e}")
             raise
 
         try:
             body = resp.json()
         except Exception as e:
-            self.logger.error(f"Failed to parse JSON from {url}: {e}")
+            self.logger.error(f"Failed to parse JSON from {request_url}: {e}")
             raise
 
-        # log truncated body for debugging
-        self.logger.debug(f"Backend raw JSON body from {url}: {body}")
+        self.logger.debug(f"Backend raw JSON body from {request_url}: {body}")
 
+        # AjaxResult 结构处理
         if isinstance(body, dict) and "code" in body:
             if body.get("code") != 200:
                 msg = body.get("msg")
-                self.logger.error(
-                    f"Backend business error for {url}: code={body.get('code')}, msg={msg}"
-                )
+                self.logger.error(f"Backend business error for {request_url}: code={body.get('code')}, msg={msg}")
                 raise Exception(f"Backend error: {msg}")
-            self.logger.info(f"Backend call {url} succeeded.")
-            return body.get("data")
+            self.logger.info(f"Backend call succeeded: {request_url}")
+            return body.get("data"), request_url
 
-        # no standard AjaxResult, just return body
-        self.logger.warning(
-            f"Backend {url} did not return AjaxResult structure; returning raw body."
-        )
-        return body
+        # 非标准结构
+        self.logger.warning(f"Backend did not return AjaxResult; returning raw body. url={request_url}")
+        return body, request_url
 
-    def _need_more_input(
-        self,
-        message: str,
-        missing_fields: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    def _need_more_input(self, message: str, missing_fields: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        When required parameters are missing, we do NOT call backend.
-        Instead, return a structured message so the model can ask the user
-        for the missing info (in English by default).
+        当必填参数缺失时：不请求后端，直接返回结构化错误，方便前端/模型提示用户补充信息。
         """
         payload = {
             "error": "MISSING_REQUIRED_PARAMS",
             "message": message,
             "missing_fields": missing_fields or [],
         }
-        # log missing param situation
-        self.logger.warning(
-            f"Missing required params: {payload['missing_fields']}, message='{message}'"
-        )
+        self.logger.warning(f"Missing required params: {payload['missing_fields']}, message='{message}'")
         return payload
 
     def _wrap_result(
@@ -181,34 +136,33 @@ class Tools:
         api_path: str,
         raw_params: Dict[str, Any],
         data: Any,
+        request_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Wrap backend data into a common structure so the model can:
-        - Know which API was called.
-        - See the original query parameters (e.g. phone number).
-        - Reliably know whether something was found via "found" flag.
-        - See any image URLs detected in the data via "images".
+        统一包装返回结构：
+        - api: 调用的接口路径
+        - query_params: 清洗后的查询参数
+        - request_url: 可直接打开的完整 URL（含 querystring）
+        - found: 是否查到（由 data 是否为空决定）
+        - data: 后端返回的数据
         """
         query_params = self._clean_params(raw_params)
         found = self._normalize_found_flag(data)
-        images = self._extract_image_urls(data)
 
         wrapped = {
             "api": api_path,
             "query_params": query_params,
+            "request_url": request_url,   # ⭐ 关键：每个接口都带一个可打开 URL
             "found": found,
             "data": data,
-            "images": images,  # image URL list
         }
 
-        self.logger.info(
-            f"API {api_path} finished. found={found}, query_params={query_params}, images_count={len(images)}"
-        )
+        self.logger.info(f"API {api_path} finished. found={found}, query_params={query_params}, url={request_url}")
         return wrapped
 
-    # ------------ API mappings to AIController ------------
+    # ------------------ AIController API 映射 ------------------
 
-    # 1. /ai/baseinfo
+    # 1) /ai/baseinfo
     def get_person_baseinfo(
         self,
         id: Optional[str] = None,
@@ -216,213 +170,137 @@ class Tools:
         phonenum: Optional[str] = None,
     ) -> Any:
         """
-        Query person base info (/ai/baseinfo).
+        查询人员基础信息（/ai/baseinfo）
 
-        Required: at least one of id / passport / phonenum.
+        必填：id / passport / phonenum 三选一（至少一个）。
 
-        MODEL GUIDANCE:
-        - If this tool returns {"found": true, "data": {...}}, you MUST
-          treat it as a successful lookup for the provided query_params
-          (ID / passport / phone number).
-        - Do NOT claim that a phone number "was not found" just because
-          it is not present as a field inside "data".
+        模型提示：
+        - 返回 {"found": true, "data": {...}} 就视为查到，
+          不要因为 data 里没回显手机号就说“手机号不存在”。
         """
         if not id and not passport and not phonenum:
             return self._need_more_input(
-                "To query base info, please provide at least one of: ID number, passport, or phone number.",
+                "查询基础信息请至少提供一个：身份证号(id) / 护照号(passport) / 手机号(phonenum)。",
                 ["id", "passport", "phonenum"],
             )
 
         raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
-        data = self._get("/ai/baseinfo", raw_params)
-        return self._wrap_result("/ai/baseinfo", raw_params, data)
+        data, request_url = self._get("/ai/baseinfo", raw_params)
+        return self._wrap_result("/ai/baseinfo", raw_params, data, request_url)
 
-    # 2. /ai/family
-    def get_family_members(
-        self,
-        id: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query family members (/ai/family).
-
-        Required: ID number or phone number.
-        """
+    # 2) /ai/family
+    def get_family_members(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询家庭成员（/ai/family），必填：身份证号(id)或手机号(phonenum)"""
         if not id and not phonenum:
             return self._need_more_input(
-                "To query family members, please provide an ID number or a phone number.",
+                "查询家庭成员请提供：身份证号(id) 或 手机号(phonenum)。",
                 ["id", "phonenum"],
             )
 
         raw_params = {"id": id, "phonenum": phonenum}
-        data = self._get("/ai/family", raw_params)
-        return self._wrap_result("/ai/family", raw_params, data)
+        data, request_url = self._get("/ai/family", raw_params)
+        return self._wrap_result("/ai/family", raw_params, data, request_url)
 
-    # 3. /ai/cr
-    def get_cr_info(
-        self,
-        id: Optional[str] = None,
-        passport: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query CR information (/ai/cr).
-
-        Required: at least one of id / passport / phonenum.
-        """
+    # 3) /ai/cr
+    def get_cr_info(self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询 CR 信息（/ai/cr），必填：id / passport / phonenum 三选一（至少一个）"""
         if not id and not passport and not phonenum:
             return self._need_more_input(
-                "To query CR information, please provide at least one of: ID number, passport, or phone number.",
+                "查询 CR 信息请至少提供一个：身份证号(id) / 护照号(passport) / 手机号(phonenum)。",
                 ["id", "passport", "phonenum"],
             )
 
         raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
-        data = self._get("/ai/cr", raw_params)
-        return self._wrap_result("/ai/cr", raw_params, data)
+        data, request_url = self._get("/ai/cr", raw_params)
+        return self._wrap_result("/ai/cr", raw_params, data, request_url)
 
-    # 4. /ai/contact
-    def get_top_contacts(
-        self,
-        id: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query TOP contacts (/ai/contact).
-
-        Required: ID number or phone number.
-        """
+    # 4) /ai/contact
+    def get_top_contacts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询 TOP 联系人（/ai/contact），必填：身份证号(id)或手机号(phonenum)"""
         if not id and not phonenum:
             return self._need_more_input(
-                "To query top contacts, please provide an ID number or a phone number.",
+                "查询 TOP 联系人请提供：身份证号(id) 或 手机号(phonenum)。",
                 ["id", "phonenum"],
             )
 
         raw_params = {"id": id, "phonenum": phonenum}
-        data = self._get("/ai/contact", raw_params)
-        return self._wrap_result("/ai/contact", raw_params, data)
+        data, request_url = self._get("/ai/contact", raw_params)
+        return self._wrap_result("/ai/contact", raw_params, data, request_url)
 
-    # 5. /ai/car
-    def get_vehicles(
-        self,
-        id: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query vehicle information (/ai/car).
-
-        Required: ID number or phone number.
-        """
+    # 5) /ai/car
+    def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询车辆信息（/ai/car），必填：身份证号(id)或手机号(phonenum)"""
         if not id and not phonenum:
             return self._need_more_input(
-                "To query vehicle information, please provide an ID number or a phone number.",
+                "查询车辆信息请提供：身份证号(id) 或 手机号(phonenum)。",
                 ["id", "phonenum"],
             )
 
         raw_params = {"id": id, "phonenum": phonenum}
-        data = self._get("/ai/car", raw_params)
-        return self._wrap_result("/ai/car", raw_params, data)
+        data, request_url = self._get("/ai/car", raw_params)
+        return self._wrap_result("/ai/car", raw_params, data, request_url)
 
-    # 6. /ai/social
-    def get_social_accounts(
-        self,
-        id: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query social account aggregation (/ai/social).
-
-        Required: ID number or phone number.
-        """
+    # 6) /ai/social
+    def get_social_accounts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询社交账号聚合（/ai/social），必填：身份证号(id)或手机号(phonenum)"""
         if not id and not phonenum:
             return self._need_more_input(
-                "To query social accounts, please provide an ID number or a phone number.",
+                "查询社交账号请提供：身份证号(id) 或 手机号(phonenum)。",
                 ["id", "phonenum"],
             )
 
         raw_params = {"id": id, "phonenum": phonenum}
-        data = self._get("/ai/social", raw_params)
-        return self._wrap_result("/ai/social", raw_params, data)
+        data, request_url = self._get("/ai/social", raw_params)
+        return self._wrap_result("/ai/social", raw_params, data, request_url)
 
-    # 7. /ai/location
-    def get_locations(
-        self,
-        id: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query location list (/ai/location).
-
-        Required: ID number or phone number.
-        """
+    # 7) /ai/location
+    def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询位置列表（/ai/location），必填：身份证号(id)或手机号(phonenum)"""
         if not id and not phonenum:
             return self._need_more_input(
-                "To query locations, please provide an ID number or a phone number.",
+                "查询位置列表请提供：身份证号(id) 或 手机号(phonenum)。",
                 ["id", "phonenum"],
             )
 
         raw_params = {"id": id, "phonenum": phonenum}
-        data = self._get("/ai/location", raw_params)
-        return self._wrap_result("/ai/location", raw_params, data)
+        data, request_url = self._get("/ai/location", raw_params)
+        return self._wrap_result("/ai/location", raw_params, data, request_url)
 
-    # 8. /ai/voip
-    def search_voip_records(
-        self,
-        keyword: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query VoIP call records (/ai/voip).
-
-        Required: at least one of keyword / phone number.
-        """
+    # 8) /ai/voip
+    def search_voip_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询 VoIP 通话记录（/ai/voip），必填：keyword 或 phonenum 至少一个"""
         if not keyword and not phonenum:
             return self._need_more_input(
-                "To query VoIP call records, please provide a keyword or a phone number.",
+                "查询 VoIP 通话记录请提供：关键词(keyword) 或 手机号(phonenum)。",
                 ["keyword", "phonenum"],
             )
 
         raw_params = {"keyword": keyword, "phonenum": phonenum}
-        data = self._get("/ai/voip", raw_params)
-        return self._wrap_result("/ai/voip", raw_params, data)
+        data, request_url = self._get("/ai/voip", raw_params)
+        return self._wrap_result("/ai/voip", raw_params, data, request_url)
 
-    # 9. /ai/sms
-    def search_sms_records(
-        self,
-        keyword: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        Query SMS records (/ai/sms).
-
-        Required: at least one of keyword / phone number.
-        """
+    # 9) /ai/sms
+    def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """查询短信记录（/ai/sms），必填：keyword 或 phonenum 至少一个"""
         if not keyword and not phonenum:
             return self._need_more_input(
-                "To query SMS records, please provide a keyword or a phone number.",
+                "查询短信记录请提供：关键词(keyword) 或 手机号(phonenum)。",
                 ["keyword", "phonenum"],
             )
 
         raw_params = {"keyword": keyword, "phonenum": phonenum}
-        data = self._get("/ai/sms", raw_params)
-        return self._wrap_result("/ai/sms", raw_params, data)
+        data, request_url = self._get("/ai/sms", raw_params)
+        return self._wrap_result("/ai/sms", raw_params, data, request_url)
 
-    # 10. /ai/email
-    def search_email_records(
-        self,
-        keyword: Optional[str] = None,
-        email: Optional[str] = None,
-    ) -> Any:
-        """
-        Query email records (/ai/email).
-
-        Required: at least one of keyword / email address.
-        """
+    # 10) /ai/email
+    def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
+        """查询邮件记录（/ai/email），必填：keyword 或 email 至少一个"""
         if not keyword and not email:
             return self._need_more_input(
-                "To query email records, please provide a keyword or an email address.",
+                "查询邮件记录请提供：关键词(keyword) 或 邮箱地址(email)。",
                 ["keyword", "email"],
             )
 
         raw_params = {"keyword": keyword, "email": email}
-        data = self._get("/ai/email", raw_params)
-        return self._wrap_result("/ai/email", raw_params, data)
+        data, request_url = self._get("/ai/email", raw_params)
+        return self._wrap_result("/ai/email", raw_params, data, request_url)
