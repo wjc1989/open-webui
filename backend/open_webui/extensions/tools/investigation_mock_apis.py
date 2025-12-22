@@ -1,649 +1,442 @@
 """
-title: Investigation Mock APIs
-author: OneCloudTech Demo
-description: Mock APIs for /business/ai/* (baseinfo, contact, social, cr, voip, sms, email) for Open WebUI tool demo.
-version: 2.1.0
+title: ESCT AI Insight (Mock)
+author: OneCloudTech
+description: Development-only mock tool that simulates /ai APIs and returns fake data without calling the real backend.
+version: 0.4.0-dev
+requirements: requests
 """
 
-# ================================================================
-# 说明（仅给开发者看，用户看不到）：
-# 1. 这是一个 Open WebUI 合规的 Tools 插件文件
-# 2. 放置路径建议为：
-#       backend/open_webui/extensions/tools/investigation_mock_apis.py
-# 3. 重启 Open WebUI 后即可在 Workspace → Tools 中启用
-#
-# 4. 所有接口当前均为 Mock（模拟数据，不调用真实 HTTP）
-# 5. 统一返回格式（与 aaa.txt 对齐）：
-#
-#       成功（对象）: { "code": 0, "data": { ... } }
-#       成功（列表）: { "code": 0, "data": [ ... ] }
-#       失败       : { "code": 500, "msg": "error message", ... }
-#
-# 6. 如果参数缺失，会返回统一格式的错误，供 LLM 提示用户补齐参数：
-#
-#       {
-#           "code": 500,
-#           "msg": "Missing required parameter: phone",
-#           "missing_params": ["phone"],
-#           "ask_user_prompt": "Please provide a phone number."
-#       }
-#
-# 7. 未来如果要接真实接口：
-#    - 只需在对应方法里，用 requests/httpx 等发起 HTTP，
-#    - URL 对应 aaa.txt 中的：
-#         /business/ai/baseinfo
-#         /business/ai/contact
-#         /business/ai/social
-#         /business/ai/cr
-#         /business/ai/voip
-#         /business/ai/sms
-#         /business/ai/email
-# ================================================================
-
-from typing import Any, Dict, List, Optional
+from typing import Optional, Any, Dict, List, Tuple
+from pydantic import BaseModel, Field
+import requests
 import logging
 
-from pydantic import BaseModel, Field
 
-# ----------------------------------------------------------------
-# 常量：社交协议映射（方便未来在返回里使用 / 给 LLM 解释）
-# ----------------------------------------------------------------
-PROTOCOL_MAP: Dict[str, str] = {
-    "147701": "X",          # Twitter
-    "147801": "TikTok",
-    "147501": "Instagram",
-    "147201": "WhatsApp",
-    "147301": "Facebook",
-    "147901": "AddressBook",
-    "128901": "Email",
-    "199901": "LinkedIn",
-}
-
-# 模块级 logger（遵循宿主应用 logging 配置，不主动加 Handler）
-logger = logging.getLogger(__name__)
-
-
-# ================================================================
-# 工具主类（必须叫 Tools，Open WebUI 会自动发现）
-# ================================================================
 class Tools:
     """
-    Investigation Mock Tools
-
-    This tool file exposes 7 mock APIs under the logical backend paths:
-
-        1) /business/ai/baseinfo
-           - params: id, phone
-           - returns: basic person info (name, avatar, id, phone, country, gender)
-
-        2) /business/ai/contact
-           - params: phone, email
-           - returns: contact statistics (phone/email of contacts, times)
-
-        3) /business/ai/social
-           - params: account, phone
-           - returns: virtual identity information (protocol, dataid, account, phone)
-
-           Protocol mapping (for reference):
-             147701 -> X (Twitter)
-             147801 -> TikTok
-             147501 -> Instagram
-             147201 -> WhatsApp
-             147301 -> Facebook
-             147901 -> Address Book
-             128901 -> Email
-             199901 -> LinkedIn
-
-        4) /business/ai/cr
-           - params: id
-           - returns: company registration (CR) information
-
-        5) /business/ai/voip
-           - params: phone
-           - returns: VoIP call records
-
-        6) /business/ai/sms
-           - params: phone
-           - returns: SMS records
-
-        7) /business/ai/email
-           - params: email
-           - returns: Email records
-
-    All methods currently return MOCK data and DO NOT call real HTTP endpoints.
-    The LLM can still use them to learn:
-      - which parameters are required,
-      - what will be returned,
-      - and how to ask the user for missing parameters.
-
-    Unified success format:
-
-        { "code": 0, "data": { ... } }
-        or
-        { "code": 0, "data": [ ... ] }
-
-    Unified error format:
-
-        {
-            "code": 500,
-            "msg": "Human readable error message",
-            "missing_params": [...],          # optional
-            "ask_user_prompt": "Ask user ..." # optional
-        }
+    Development-only tool:
+    - External method signatures are identical to the real ESCT AI Insight tool.
+    - _get does NOT call the real backend. It returns mock data based on the API path.
     """
 
-    # ------------------------------------------------------------
-    # 全局 Valves 配置，可在 Open WebUI 的前端控制台动态修改
-    # ------------------------------------------------------------
-    class Valves(BaseModel):
-        # demo_mode 用于未来扩展（是否读取真实 API）
-        demo_mode: bool = Field(
-            True,
-            description="If true, use mock data only (no real external APIs).",
-        )
-
-    # ------------------------------------------------------------
-    # 初始化
-    # ------------------------------------------------------------
     def __init__(self):
-        # 自动加载 Valves 配置
+        # Disable citations in chat output
+        self.citation = False
         self.valves = self.Valves()
-        logger.info(
-            "[InvestigationMock] Tools initialized, demo_mode=%s",
-            self.valves.demo_mode,
+
+        # ----- logging -----
+        self.logger = logging.getLogger("ESCT_AI_Insight_MOCK")
+        if not self.logger.handlers:
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+            )
+
+    class Valves(BaseModel):
+        backend_base_url: str = Field(
+            "http://mock-backend.local:8654",
+            description="Mock base URL for development (only used to construct request_url; no real HTTP requests).",
         )
 
-    # ============================================================
-    # 内部工具方法：日志与参数校验
-    # ============================================================
-    @staticmethod
-    def _build_safe_kwargs(**kwargs: Any) -> Dict[str, Any]:
-        """
-        过滤掉值为 None 的参数，避免日志太啰嗦。
-        """
-        return {k: v for k, v in kwargs.items() if v is not None}
+    # ------------------ Common helper methods ------------------
 
-    def _log_call(self, func_name: str, **kwargs: Any) -> None:
-        """
-        打印工具调用日志：包括函数名和非空参数。
-        只在后端日志里出现，不会暴露给用户。
-        """
-        safe_kwargs = self._build_safe_kwargs(**kwargs)
-        logger.info("[InvestigationMock] %s called with %s", func_name, safe_kwargs)
+    def _build_url(self, path: str) -> str:
+        """Build base URL (without querystring)."""
+        base = self.valves.backend_base_url.rstrip("/")
+        return f"{base}{path}"
 
-    @staticmethod
-    def _ok(data: Any) -> Dict[str, Any]:
-        """
-        构造统一格式成功返回。
+    def _clean_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter out None / empty string parameters."""
+        return {k: v for k, v in params.items() if v is not None and v != ""}
 
-        Returns:
-            {
-                "code": 0,
-                "data": data
+    def _normalize_found_flag(self, data: Any) -> bool:
+        """
+        Decide whether data should be considered "found".
+        - None -> not found
+        - empty list/dict -> not found
+        - otherwise -> found
+        """
+        if data is None:
+            return False
+        if isinstance(data, (list, dict)) and len(data) == 0:
+            return False
+        return True
+
+    def _build_full_url_with_params(self, url: str, params: Dict[str, Any]) -> str:
+        """
+        Build a user-friendly URL including querystring.
+        Uses requests.Request for proper encoding.
+        """
+        req = requests.Request("GET", url, params=params).prepare()
+        return req.url
+
+    # In this mock version, _get does NOT send HTTP requests.
+    def _get(self, path: str, params: Dict[str, Any]) -> Tuple[Any, str]:
+        """
+        Mock version of GET:
+        - Does not call the real backend.
+        - Returns (data, request_url) with fake data.
+        """
+        url = self._build_url(path)
+        query = self._clean_params(params)
+        request_url = self._build_full_url_with_params(url, query)
+
+        self.logger.info(f"[MOCK] Returning fake data for {request_url}")
+
+        # Build mock data based on API path
+        if path == "/ai/baseinfo":
+            data = {
+                "id": query.get("id", "ID1234567890"),
+                "passport": query.get("passport", "P1234567"),
+                "phonenum": query.get("phonenum", "+96890000000"),
+                "name": "Test User",
+                "gender": "M",
+                "birthday": "1990-01-01",
+                "nationality": "OM",
+                "address": "Muscat, Oman",
+                "remarks": "This is mock base info for development testing.",
             }
+
+        elif path == "/ai/family":
+            data = [
+                {
+                    "relation": "spouse",
+                    "name": "Mock Spouse",
+                    "id": "ID_FAMILY_001",
+                    "phonenum": "+96890000001",
+                },
+                {
+                    "relation": "child",
+                    "name": "Mock Child",
+                    "id": "ID_FAMILY_002",
+                    "phonenum": "+96890000002",
+                },
+            ]
+
+        elif path == "/ai/cr":
+            data = {
+                "id": query.get("id", "ID1234567890"),
+                "phonenum": query.get("phonenum", "+96890000000"),
+                "score": 780,
+                "level": "A",
+                "update_time": "2025-01-01 10:00:00",
+                "remarks": "This is mock CR info for integration testing.",
+            }
+
+        elif path == "/ai/contact":
+            data = [
+                {
+                    "rank": 1,
+                    "phonenum": "+96890000011",
+                    "name": "Top Contact A",
+                    "call_times": 128,
+                    "sms_times": 56,
+                    "last_contact_time": "2025-01-02 12:34:56",
+                },
+                {
+                    "rank": 2,
+                    "phonenum": "+96890000022",
+                    "name": "Top Contact B",
+                    "call_times": 96,
+                    "sms_times": 33,
+                    "last_contact_time": "2025-01-01 09:20:00",
+                },
+            ]
+
+        elif path == "/ai/car":
+            data = [
+                {
+                    "plate_no": "TEST-1234",
+                    "brand": "Toyota",
+                    "model": "Camry",
+                    "color": "White",
+                    "owner_id": query.get("id", "ID1234567890"),
+                    "register_date": "2020-05-01",
+                },
+                {
+                    "plate_no": "TEST-5678",
+                    "brand": "Nissan",
+                    "model": "Altima",
+                    "color": "Black",
+                    "owner_id": query.get("id", "ID1234567890"),
+                    "register_date": "2022-03-15",
+                },
+            ]
+
+        elif path == "/ai/social":
+            data = [
+                {
+                    "platform": "WhatsApp",
+                    "account": "+96890000000",
+                    "nickname": "Mock WhatsApp",
+                    "last_active": "2025-01-01 08:00:00",
+                },
+                {
+                    "platform": "Instagram",
+                    "account": "mock_instagram",
+                    "nickname": "Mock IG",
+                    "last_active": "2024-12-31 22:10:00",
+                },
+            ]
+
+        elif path == "/ai/location":
+            data = [
+                {
+                    "time": "2025-01-01 09:00:00",
+                    "lat": 23.5880,
+                    "lon": 58.3829,
+                    "addr": "Muscat City Center",
+                },
+                {
+                    "time": "2025-01-01 10:30:00",
+                    "lat": 23.6000,
+                    "lon": 58.4000,
+                    "addr": "Office Building",
+                },
+            ]
+
+        elif path == "/ai/voip":
+            data = [
+                {
+                    "call_id": "VOIP_TEST_001",
+                    "from": query.get("phonenum", "+96890000000"),
+                    "to": "+96890000011",
+                    "start_time": "2025-01-01 10:00:00",
+                    "duration_sec": 180,
+                    "direction": "OUT",
+                    "keyword_hit": query.get("keyword"),
+                },
+                {
+                    "call_id": "VOIP_TEST_002",
+                    "from": "+96890000022",
+                    "to": query.get("phonenum", "+96890000000"),
+                    "start_time": "2025-01-01 11:00:00",
+                    "duration_sec": 60,
+                    "direction": "IN",
+                    "keyword_hit": query.get("keyword"),
+                },
+            ]
+
+        elif path == "/ai/sms":
+            data = [
+                {
+                    "sms_id": "SMS_TEST_001",
+                    "phonenum": query.get("phonenum", "+96890000000"),
+                    "peer": "+96890000011",
+                    "time": "2025-01-01 09:30:00",
+                    "content": f"[MOCK SMS] This is a test SMS. keyword={query.get('keyword')}",
+                },
+                {
+                    "sms_id": "SMS_TEST_002",
+                    "phonenum": "+96890000022",
+                    "peer": query.get("phonenum", "+96890000000"),
+                    "time": "2025-01-01 09:35:00",
+                    "content": "[MOCK SMS] Second test SMS message.",
+                },
+            ]
+
+        elif path == "/ai/email":
+            data = [
+                {
+                    "email_id": "MAIL_TEST_001",
+                    "from": "sender@example.com",
+                    "to": query.get("email", "user@example.com"),
+                    "subject": "[MOCK EMAIL] Test subject 1",
+                    "time": "2025-01-01 08:00:00",
+                    "snippet": f"This is the first mock email snippet. keyword={query.get('keyword')}",
+                },
+                {
+                    "email_id": "MAIL_TEST_002",
+                    "from": query.get("email", "user@example.com"),
+                    "to": "receiver@example.com",
+                    "subject": "[MOCK EMAIL] Test subject 2",
+                    "time": "2025-01-01 09:15:00",
+                    "snippet": "This is the second mock email snippet.",
+                },
+            ]
+
+        else:
+            # Fallback: echo structure if no specific mock is defined for the path
+            data = {
+                "echo_path": path,
+                "echo_params": query,
+                "note": "No dedicated mock data defined for this path. Echoing request parameters.",
+            }
+
+        return data, request_url
+
+    def _need_more_input(self, message: str, missing_fields: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        return {
-            "code": 0,
+        When required parameters are missing: do not call backend.
+        Return a structured error so the model / frontend can ask the user for more input.
+        """
+        payload = {
+            "error": "MISSING_REQUIRED_PARAMS",
+            "message": message,
+            "missing_fields": missing_fields or [],
+        }
+        self.logger.warning(f"[MOCK] Missing required params: {payload['missing_fields']}, message='{message}'")
+        return payload
+
+    def _wrap_result(
+        self,
+        api_path: str,
+        raw_params: Dict[str, Any],
+        data: Any,
+        request_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Unified result wrapper:
+        - api: API path
+        - query_params: cleaned query params
+        - request_url: full URL with querystring (for inspection)
+        - found: boolean flag derived from data
+        - data: mock data
+        """
+        query_params = self._clean_params(raw_params)
+        found = self._normalize_found_flag(data)
+
+        wrapped = {
+            "api": api_path,
+            "query_params": query_params,
+            "request_url": request_url,
+            "found": found,
             "data": data,
         }
 
-    @staticmethod
-    def _err(
-        msg: str,
-        missing: Optional[List[str]] = None,
-        ask: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        构造统一格式错误返回（缺少参数等）。
+        self.logger.info(
+            f"[MOCK] API {api_path} finished. found={found}, query_params={query_params}, url={request_url}"
+        )
+        return wrapped
 
-        Basic format:
-            {"code": 500, "msg": "..."}
+    # ------------------ AIController API mapping (same signatures as real tool) ------------------
 
-        Extended fields:
-            - missing_params: which parameters are missing
-            - ask_user_prompt: how LLM should ask the user
-        """
-        body: Dict[str, Any] = {
-            "code": 500,
-            "msg": msg,
-        }
-        if missing:
-            body["missing_params"] = missing
-        if ask:
-            body["ask_user_prompt"] = ask
-        return body
-
-    # ------------- 参数校验 Helper（减少重复代码） ----------------
-    def _ensure_any_param(
+    # 1) /ai/baseinfo
+    def get_person_baseinfo(
         self,
-        func_name: str,
-        params: Dict[str, Optional[str]],
-        msg: str,
-        ask: str,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        检查给定的多个参数中，是否至少有一个不为 None。
-        如果全是 None，则返回错误结构；否则返回 None。
-
-        用法示例：
-            err = self._ensure_any_param(
-                "get_person_basic_info",
-                {"id": id, "phone": phone},
-                "Missing required identifier: you must provide 'id' or 'phone'.",
-                "To query basic information, please provide an ID or a phone number.",
+        id: Optional[str] = None,
+        passport: Optional[str] = None,
+        phonenum: Optional[str] = None,
+    ) -> Any:
+        if not id and not passport and not phonenum:
+            return self._need_more_input(
+                "To query base info, please provide at least one of: id, passport, or phonenum.",
+                ["id", "passport", "phonenum"],
             )
-            if err:
-                return err
-        """
-        if any(value is not None for value in params.values()):
-            return None
-        missing_keys = list(params.keys())
-        logger.warning(
-            "[InvestigationMock] %s missing params: %s",
-            func_name,
-            missing_keys,
-        )
-        return self._err(msg, missing_keys, ask)
 
-    def _ensure_param(
-        self,
-        func_name: str,
-        name: str,
-        value: Optional[str],
-        msg: str,
-        ask: str,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        检查单个必填参数是否存在。
-        """
-        if value is not None:
-            return None
-        logger.warning(
-            "[InvestigationMock] %s missing param: %s",
-            func_name,
-            name,
-        )
-        return self._err(msg, [name], ask)
+        raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
+        data, request_url = self._get("/ai/baseinfo", raw_params)
+        return self._wrap_result("/ai/baseinfo", raw_params, data, request_url)
 
-    # ============================================================
-    # 1) /business/ai/baseinfo
-    #    -params id/phone
-    #    -return: basic person info
-    # ============================================================
-    def get_person_basic_info(
+    # 2) /ai/family
+    def get_family_members(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not id and not phonenum:
+            return self._need_more_input(
+                "To query family members, please provide id or phonenum.",
+                ["id", "phonenum"],
+            )
+
+        raw_params = {"id": id, "phonenum": phonenum}
+        data, request_url = self._get("/ai/family", raw_params)
+        return self._wrap_result("/ai/family", raw_params, data, request_url)
+
+    # 3) /ai/cr
+    def get_cr_info(
         self,
         id: Optional[str] = None,
-        phone: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/baseinfo (MOCK)
+        passport: Optional[str] = None,
+        phonenum: Optional[str] = None,
+    ) -> Any:
+        if not id and not passport and not phonenum:
+            return self._need_more_input(
+                "To query CR info, please provide at least one of: id, passport, or phonenum.",
+                ["id", "passport", "phonenum"],
+            )
 
-        Query basic person information by id or phone.
-        """
-        self._log_call(
-            "get_person_basic_info",
-            id=id,
-            phone=phone,
-            query_id=query_id,
-        )
+        raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
+        data, request_url = self._get("/ai/cr", raw_params)
+        return self._wrap_result("/ai/cr", raw_params, data, request_url)
 
-        err = self._ensure_any_param(
-            "get_person_basic_info",
-            {"id": id, "phone": phone},
-            "Missing required identifier: you must provide 'id' or 'phone'.",
-            "To query basic information, please provide an ID or a phone number.",
-        )
-        if err:
-            return err
+    # 4) /ai/contact
+    def get_top_contacts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not id and not phonenum:
+            return self._need_more_input(
+                "To query top contacts, please provide id or phonenum.",
+                ["id", "phonenum"],
+            )
 
-        # ——模拟数据（mock data）——
-        data = {
-            "id": id or "P202511300001",
-            "phone": phone or "+96890001122",
-            "name": "Demo Person",
-            "avatar_url": "https://example.com/avatar/demo_person.png",
-            "country": "OM",
-            "gender": "M",
-            "query_id": query_id or "mock-baseinfo-001",
-        }
-        return self._ok(data)
+        raw_params = {"id": id, "phonenum": phonenum}
+        data, request_url = self._get("/ai/contact", raw_params)
+        return self._wrap_result("/ai/contact", raw_params, data, request_url)
 
-    # ============================================================
-    # 2) /business/ai/contact
-    #    -params phone/email
-    #    -return: contact list with times
-    # ============================================================
-    def get_contact_statistics(
-        self,
-        phone: Optional[str] = None,
-        email: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/contact (MOCK)
+    # 5) /ai/car
+    def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not id and not phonenum:
+            return self._need_more_input(
+                "To query vehicle info, please provide id or phonenum.",
+                ["id", "phonenum"],
+            )
 
-        Query person's contact statistics by phone or email.
-        """
-        self._log_call(
-            "get_contact_statistics",
-            phone=phone,
-            email=email,
-            query_id=query_id,
-        )
+        raw_params = {"id": id, "phonenum": phonenum}
+        data, request_url = self._get("/ai/car", raw_params)
+        return self._wrap_result("/ai/car", raw_params, data, request_url)
 
-        err = self._ensure_any_param(
-            "get_contact_statistics",
-            {"phone": phone, "email": email},
-            "Missing required identifier: you must provide 'phone' or 'email'.",
-            "To query contacts, please provide a phone number or an email address.",
-        )
-        if err:
-            return err
+    # 6) /ai/social
+    def get_social_accounts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not id and not phonenum:
+            return self._need_more_input(
+                "To query social accounts, please provide id or phonenum.",
+                ["id", "phonenum"],
+            )
 
-        # ——模拟数据（mock data）——
-        target = phone or email
-        data = [
-            {
-                "contact_type": "phone",
-                "contact": "+96890003344",
-                "times": 128,
-            },
-            {
-                "contact_type": "phone",
-                "contact": "+96890005566",
-                "times": 34,
-            },
-            {
-                "contact_type": "email",
-                "contact": "friend@example.com",
-                "times": 12,
-            },
-        ]
+        raw_params = {"id": id, "phonenum": phonenum}
+        data, request_url = self._get("/ai/social", raw_params)
+        return self._wrap_result("/ai/social", raw_params, data, request_url)
 
-        return self._ok(
-            {
-                "owner": target,
-                "items": data,
-                "query_id": query_id or "mock-contact-001",
-            }
-        )
+    # 7) /ai/location
+    def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not id and not phonenum:
+            return self._need_more_input(
+                "To query locations, please provide id or phonenum.",
+                ["id", "phonenum"],
+            )
 
-    # ============================================================
-    # 3) /business/ai/social
-    #    -params account/phone
-    #    -return: virtual identity info
-    # ============================================================
-    def get_social_accounts(
-        self,
-        account: Optional[str] = None,
-        phone: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/social (MOCK)
+        raw_params = {"id": id, "phonenum": phonenum}
+        data, request_url = self._get("/ai/location", raw_params)
+        return self._wrap_result("/ai/location", raw_params, data, request_url)
 
-        Query virtual identity information by social account or phone.
-        """
-        self._log_call(
-            "get_social_accounts",
-            account=account,
-            phone=phone,
-            query_id=query_id,
-        )
+    # 8) /ai/voip
+    def search_voip_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not keyword and not phonenum:
+            return self._need_more_input(
+                "To search VoIP call records, please provide keyword or phonenum.",
+                ["keyword", "phonenum"],
+            )
 
-        err = self._ensure_any_param(
-            "get_social_accounts",
-            {"account": account, "phone": phone},
-            "Missing required identifier: you must provide 'account' or 'phone'.",
-            "To query social identities, please provide a social account or a phone number.",
-        )
-        if err:
-            return err
+        raw_params = {"keyword": keyword, "phonenum": phonenum}
+        data, request_url = self._get("/ai/voip", raw_params)
+        return self._wrap_result("/ai/voip", raw_params, data, request_url)
 
-        # ——模拟数据（mock data，根据 aaa.txt 的示例结构）——
-        owner = account or phone or ""
-        items = [
-            {
-                "dataid": "128901_" + owner,
-                "protocol": "128901",
-                "account": owner or "demo_user@m.facebook.com",
-                "phone": phone or "+96890001122",
-                "nickname": "Demo Email",
-                "platform": PROTOCOL_MAP.get("128901", "Email"),
-            },
-            {
-                "dataid": "147301_" + (phone or "demo_facebook"),
-                "protocol": "147301",
-                "account": "demo_facebook_user",
-                "phone": phone or "+96890001122",
-                "nickname": "Demo FB",
-                "platform": PROTOCOL_MAP.get("147301", "Facebook"),
-            },
-        ]
+    # 9) /ai/sms
+    def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        if not keyword and not phonenum:
+            return self._need_more_input(
+                "To search SMS records, please provide keyword or phonenum.",
+                ["keyword", "phonenum"],
+            )
 
-        return self._ok(
-            {
-                "owner": owner,
-                "items": items,
-                "query_id": query_id or "mock-social-001",
-            }
-        )
+        raw_params = {"keyword": keyword, "phonenum": phonenum}
+        data, request_url = self._get("/ai/sms", raw_params)
+        return self._wrap_result("/ai/sms", raw_params, data, request_url)
 
-    # ============================================================
-    # 4) /business/ai/cr
-    #    -params id
-    #    -return: company registration info
-    # ============================================================
-    def get_company_registration(
-        self,
-        id: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/cr (MOCK)
+    # 10) /ai/email
+    def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
+        if not keyword and not email:
+            return self._need_more_input(
+                "To search email records, please provide keyword or email.",
+                ["keyword", "email"],
+            )
 
-        Query company registration (CR) information.
-        """
-        self._log_call(
-            "get_company_registration",
-            id=id,
-            query_id=query_id,
-        )
-
-        err = self._ensure_param(
-            "get_company_registration",
-            "id",
-            id,
-            "Missing required parameter: id.",
-            "To query company registration information, please provide a company id.",
-        )
-        if err:
-            return err
-
-        # ——模拟数据（mock data）——
-        data = {
-            "id": id,
-            "reg_no": "CR-2025-000001",
-            "name": "OneCloudTech Demo LLC",
-            "status": "Active",
-            "legal_person": "Demo Owner",
-            "address": "Muscat, Oman",
-            "industry": "Information Technology Services",
-            "establish_date": "2023-01-01",
-            "query_id": query_id or "mock-cr-001",
-        }
-        return self._ok(data)
-
-    # ============================================================
-    # 5) /business/ai/voip
-    #    -params phone
-    #    -return: VoIP call records
-    # ============================================================
-    def get_voip_records(
-        self,
-        phone: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/voip (MOCK)
-
-        Query VoIP call records by phone.
-        """
-        self._log_call(
-            "get_voip_records",
-            phone=phone,
-            query_id=query_id,
-        )
-
-        err = self._ensure_param(
-            "get_voip_records",
-            "phone",
-            phone,
-            "Missing required parameter: phone.",
-            "To query VoIP call records, please provide a phone number.",
-        )
-        if err:
-            return err
-
-        # ——模拟数据（mock data）——
-        items = [
-            {
-                "call_id": "VOIP-20251130-0001",
-                "from": phone,
-                "to": "+96890002233",
-                "start_time": "2025-11-30 10:30:00",
-                "duration_sec": 180,
-                "direction": "outgoing",
-            },
-            {
-                "call_id": "VOIP-20251130-0002",
-                "from": "+96890002233",
-                "to": phone,
-                "start_time": "2025-11-29 21:15:00",
-                "duration_sec": 60,
-                "direction": "incoming",
-            },
-        ]
-
-        return self._ok(
-            {
-                "phone": phone,
-                "items": items,
-                "query_id": query_id or "mock-voip-001",
-            }
-        )
-
-    # ============================================================
-    # 6) /business/ai/sms
-    #    -params phone
-    #    -return: SMS records
-    # ============================================================
-    def get_sms_records(
-        self,
-        phone: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/sms (MOCK)
-
-        Query SMS records by phone.
-        """
-        self._log_call(
-            "get_sms_records",
-            phone=phone,
-            query_id=query_id,
-        )
-
-        err = self._ensure_param(
-            "get_sms_records",
-            "phone",
-            phone,
-            "Missing required parameter: phone.",
-            "To query SMS records, please provide a phone number.",
-        )
-        if err:
-            return err
-
-        # ——模拟数据（mock data）——
-        items = [
-            {
-                "sms_id": "SMS-20251130-0001",
-                "from": phone,
-                "to": "+96890003344",
-                "time": "2025-11-30 09:00:00",
-                "content": "Demo SMS content 1.",
-            },
-            {
-                "sms_id": "SMS-20251129-0002",
-                "from": "+96890005566",
-                "to": phone,
-                "time": "2025-11-29 18:20:00",
-                "content": "Demo SMS content 2.",
-            },
-        ]
-
-        return self._ok(
-            {
-                "phone": phone,
-                "items": items,
-                "query_id": query_id or "mock-sms-001",
-            }
-        )
-
-    # ============================================================
-    # 7) /business/ai/email
-    #    -params email
-    #    -return: Email records
-    # ============================================================
-    def get_email_records(
-        self,
-        email: Optional[str] = None,
-        query_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        /business/ai/email (MOCK)
-
-        Query Email records by email address.
-        """
-        self._log_call(
-            "get_email_records",
-            email=email,
-            query_id=query_id,
-        )
-
-        err = self._ensure_param(
-            "get_email_records",
-            "email",
-            email,
-            "Missing required parameter: email.",
-            "To query email records, please provide an email address.",
-        )
-        if err:
-            return err
-
-        # ——模拟数据（mock data）——
-        items = [
-            {
-                "message_id": "MAIL-20251130-0001",
-                "from": email,
-                "to": ["friend1@example.com"],
-                "subject": "Demo email subject 1",
-                "time": "2025-11-30 08:30:00",
-            },
-            {
-                "message_id": "MAIL-20251129-0002",
-                "from": "other@example.com",
-                "to": [email],
-                "subject": "Demo email subject 2",
-                "time": "2025-11-29 16:10:00",
-            },
-        ]
-
-        return self._ok(
-            {
-                "email": email,
-                "items": items,
-                "query_id": query_id or "mock-email-001",
-            }
-        )
+        raw_params = {"keyword": keyword, "email": email}
+        data, request_url = self._get("/ai/email", raw_params)
+        return self._wrap_result("/ai/email", raw_params, data, request_url)
