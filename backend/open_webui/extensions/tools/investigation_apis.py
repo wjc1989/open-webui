@@ -1,7 +1,7 @@
 """
 title: ESCT AI Insight
 author: OneCloudTech
-description: 调用后端 /ai 接口，查询人员基础信息、家庭、联系人、社交账号、位置、VoIP/SMS/Email 等记录
+description: Call backend /ai APIs to query person base info, family, contacts, social accounts, locations, and VoIP/SMS/Email records
 version: 0.4.0
 requirements: requests
 """
@@ -10,21 +10,22 @@ from typing import Optional, Any, Dict, List, Tuple
 from pydantic import BaseModel, Field
 import requests
 import logging
+from urllib.parse import urlencode
 
 
 class Tools:
     """
-    工具类：把 Open WebUI Tool 调用映射到后端 AIController 接口。
+    Tool class: maps Open WebUI Tool calls to backend AIController APIs.
     AIController Base Path: /ai
 
-    重要提示（给模型/调用方看的约束）：
-    - 如果工具返回对象里包含 {"found": true, "data": ...}，
-      即使 data 里没有出现原始查询参数（例如 phone 字段没回显），也必须视为“查到了”。
-    - 只有在 found 为 false，或返回明确 error 时，才能说“未找到”。
+    IMPORTANT RULES (for model / caller):
+    - If the tool returns {"found": true, "data": ...}, it MUST be treated as "found",
+      even if the original query parameter (e.g. phone number) is not echoed in data.
+    - Only when found == false, or a clear error is returned, can it be treated as "not found".
     """
 
     def __init__(self):
-        # 不在聊天输出中生成 citations
+        # Do not generate citations in chat output
         self.citation = False
         self.valves = self.Valves()
 
@@ -39,26 +40,26 @@ class Tools:
     class Valves(BaseModel):
         backend_base_url: str = Field(
             "http://192.168.80.185:8654",
-            description="后端 Spring Boot Base URL（不含 /ai），例如：http://192.168.80.185:8654",
+            description="Backend Spring Boot base URL (without /ai), e.g. http://192.168.80.185:8654",
         )
 
-    # ------------------ 通用工具方法 ------------------
+    # ------------------ Common helper methods ------------------
 
     def _build_url(self, path: str) -> str:
-        """拼接后端请求 URL（不含 querystring）"""
+        """Build backend request URL (without query string)."""
         base = self.valves.backend_base_url.rstrip("/")
         return f"{base}{path}"
 
     def _clean_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """清理参数：过滤 None / 空字符串"""
+        """Remove None or empty-string parameters."""
         return {k: v for k, v in params.items() if v is not None and v != ""}
 
     def _normalize_found_flag(self, data: Any) -> bool:
         """
-        判断是否“查到”：
-        - data 为 None -> 未找到
-        - data 是空 list / 空 dict -> 未找到
-        - 其它情况 -> 找到
+        Decide whether data is considered 'found':
+        - None -> not found
+        - Empty list / empty dict -> not found
+        - Otherwise -> found
         """
         if data is None:
             return False
@@ -68,21 +69,20 @@ class Tools:
 
     def _build_full_url_with_params(self, url: str, params: Dict[str, Any]) -> str:
         """
-        生成“可直接打开”的完整 URL（含 querystring）。
-        注意：使用 requests 的 PreparedRequest 来保证编码正确。
+        Build a directly openable full URL (with query string).
+        Uses requests.PreparedRequest to ensure proper encoding.
         """
         req = requests.Request("GET", url, params=params).prepare()
         return req.url
 
     def _get(self, path: str, params: Dict[str, Any]) -> Tuple[Any, str]:
         """
-        发起 GET 请求。
-        期望后端返回 AjaxResult 结构：
+        Perform a GET request.
+
+        Expected backend response format (AjaxResult):
         { "code": 200, "msg": "...", "data": ... }
 
-        返回：(data, request_url)
-        - data: body.data 或 raw body
-        - request_url: 最终请求 URL（含 querystring，可直接打开/复制）
+        Returns: (data, request_url)
         """
         url = self._build_url(path)
         query = self._clean_params(params)
@@ -106,7 +106,6 @@ class Tools:
 
         self.logger.debug(f"Backend raw JSON body from {request_url}: {body}")
 
-        # AjaxResult 结构处理
         if isinstance(body, dict) and "code" in body:
             if body.get("code") != 200:
                 msg = body.get("msg")
@@ -115,13 +114,14 @@ class Tools:
             self.logger.info(f"Backend call succeeded: {request_url}")
             return body.get("data"), request_url
 
-        # 非标准结构
         self.logger.warning(f"Backend did not return AjaxResult; returning raw body. url={request_url}")
         return body, request_url
 
     def _need_more_input(self, message: str, missing_fields: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        当必填参数缺失时：不请求后端，直接返回结构化错误，方便前端/模型提示用户补充信息。
+        When required parameters are missing:
+        - Do NOT call backend
+        - Return a structured error for frontend / model prompting
         """
         payload = {
             "error": "MISSING_REQUIRED_PARAMS",
@@ -131,56 +131,57 @@ class Tools:
         self.logger.warning(f"Missing required params: {payload['missing_fields']}, message='{message}'")
         return payload
 
-    def _wrap_result(
-        self,
-        api_path: str,
-        raw_params: Dict[str, Any],
-        data: Any,
-        request_url: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    def _wrap_result(self, endpoint: str, raw_params: dict, data: Any, request_url: str) -> Any:
         """
-        统一包装返回结构：
-        - api: 调用的接口路径
-        - query_params: 清洗后的查询参数
-        - request_url: 可直接打开的完整 URL（含 querystring）
-        - found: 是否查到（由 data 是否为空决定）
-        - data: 后端返回的数据
-        """
-        query_params = self._clean_params(raw_params)
-        found = self._normalize_found_flag(data)
+        Wrap tool output.
 
-        wrapped = {
-            "api": api_path,
-            "query_params": query_params,
-            "request_url": request_url,   # ⭐ 关键：每个接口都带一个可打开 URL
+        Key behavior:
+        - <jump ...> markers are placed in the message (assistant text), not inside pure-JSON fields
+        - jump_url is removed from data to avoid auto-rendering as a clickable link
+        """
+
+        if isinstance(data, dict):
+            found = bool(data.get("found")) if "found" in data else bool(data)
+        else:
+            found = bool(data)
+
+        jump_url = data.get("jump_url") if isinstance(data, dict) else None
+
+        data_out = data
+        if jump_url and isinstance(data, dict):
+            data_out = dict(data)
+            data_out.pop("jump_url", None)
+
+        msg_lines = []
+        if found:
+            msg_lines.append("Relevant records were found.")
+        else:
+            msg_lines.append("No relevant records were found.")
+
+        if jump_url:
+            msg_lines.append("")
+            msg_lines.append(f'<jump url="{jump_url}" height="300"></jump>')
+            msg_lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
+
+        result = {
             "found": found,
-            "data": data,
+            "request_url": request_url,
+            "data": data_out,
+            "message": "\n".join(msg_lines),
         }
 
-        self.logger.info(f"API {api_path} finished. found={found}, query_params={query_params}, url={request_url}")
-        return wrapped
+        if jump_url:
+            result["_jump_url"] = jump_url
 
-    # ------------------ AIController API 映射 ------------------
+        return result
 
-    # 1) /ai/baseinfo
-    def get_person_baseinfo(
-        self,
-        id: Optional[str] = None,
-        passport: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        """
-        查询人员基础信息（/ai/baseinfo）
+    # ------------------ AIController API mappings ------------------
 
-        必填：id / passport / phonenum 三选一（至少一个）。
-
-        模型提示：
-        - 返回 {"found": true, "data": {...}} 就视为查到，
-          不要因为 data 里没回显手机号就说“手机号不存在”。
-        """
+    def get_person_baseinfo(self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+        """Query person base information (/ai/baseinfo). Required: id / passport / phonenum (at least one)."""
         if not id and not passport and not phonenum:
             return self._need_more_input(
-                "查询基础信息请至少提供一个：身份证号(id) / 护照号(passport) / 手机号(phonenum)。",
+                "To query base information, please provide at least one of: id, passport, or phonenum.",
                 ["id", "passport", "phonenum"],
             )
 
@@ -188,12 +189,11 @@ class Tools:
         data, request_url = self._get("/ai/baseinfo", raw_params)
         return self._wrap_result("/ai/baseinfo", raw_params, data, request_url)
 
-    # 2) /ai/family
     def get_family_members(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询家庭成员（/ai/family），必填：身份证号(id)或手机号(phonenum)"""
+        """Query family members (/ai/family). Required: id or phonenum."""
         if not id and not phonenum:
             return self._need_more_input(
-                "查询家庭成员请提供：身份证号(id) 或 手机号(phonenum)。",
+                "To query family members, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
 
@@ -201,12 +201,11 @@ class Tools:
         data, request_url = self._get("/ai/family", raw_params)
         return self._wrap_result("/ai/family", raw_params, data, request_url)
 
-    # 3) /ai/cr
     def get_cr_info(self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询 CR 信息（/ai/cr），必填：id / passport / phonenum 三选一（至少一个）"""
+        """Query CR information (/ai/cr). Required: id / passport / phonenum (at least one)."""
         if not id and not passport and not phonenum:
             return self._need_more_input(
-                "查询 CR 信息请至少提供一个：身份证号(id) / 护照号(passport) / 手机号(phonenum)。",
+                "To query CR information, please provide at least one of: id, passport, or phonenum.",
                 ["id", "passport", "phonenum"],
             )
 
@@ -214,12 +213,11 @@ class Tools:
         data, request_url = self._get("/ai/cr", raw_params)
         return self._wrap_result("/ai/cr", raw_params, data, request_url)
 
-    # 4) /ai/contact
     def get_top_contacts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询 TOP 联系人（/ai/contact），必填：身份证号(id)或手机号(phonenum)"""
+        """Query top contacts (/ai/contact). Required: id or phonenum."""
         if not id and not phonenum:
             return self._need_more_input(
-                "查询 TOP 联系人请提供：身份证号(id) 或 手机号(phonenum)。",
+                "To query top contacts, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
 
@@ -227,12 +225,11 @@ class Tools:
         data, request_url = self._get("/ai/contact", raw_params)
         return self._wrap_result("/ai/contact", raw_params, data, request_url)
 
-    # 5) /ai/car
     def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询车辆信息（/ai/car），必填：身份证号(id)或手机号(phonenum)"""
+        """Query vehicle information (/ai/car). Required: id or phonenum."""
         if not id and not phonenum:
             return self._need_more_input(
-                "查询车辆信息请提供：身份证号(id) 或 手机号(phonenum)。",
+                "To query vehicle information, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
 
@@ -240,12 +237,11 @@ class Tools:
         data, request_url = self._get("/ai/car", raw_params)
         return self._wrap_result("/ai/car", raw_params, data, request_url)
 
-    # 6) /ai/social
     def get_social_accounts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询社交账号聚合（/ai/social），必填：身份证号(id)或手机号(phonenum)"""
+        """Query aggregated social accounts (/ai/social). Required: id or phonenum."""
         if not id and not phonenum:
             return self._need_more_input(
-                "查询社交账号请提供：身份证号(id) 或 手机号(phonenum)。",
+                "To query social accounts, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
 
@@ -253,12 +249,11 @@ class Tools:
         data, request_url = self._get("/ai/social", raw_params)
         return self._wrap_result("/ai/social", raw_params, data, request_url)
 
-    # 7) /ai/location
     def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询位置列表（/ai/location），必填：身份证号(id)或手机号(phonenum)"""
+        """Query location list (/ai/location). Required: id or phonenum."""
         if not id and not phonenum:
             return self._need_more_input(
-                "查询位置列表请提供：身份证号(id) 或 手机号(phonenum)。",
+                "To query locations, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
 
@@ -266,25 +261,36 @@ class Tools:
         data, request_url = self._get("/ai/location", raw_params)
         return self._wrap_result("/ai/location", raw_params, data, request_url)
 
-    # 8) /ai/voip
-    def search_voip_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询 VoIP 通话记录（/ai/voip），必填：keyword 或 phonenum 至少一个"""
-        if not keyword and not phonenum:
+    def search_voip_records(self, phonenum: Optional[str] = None) -> Any:
+        """Search VoIP call records (/ai/voip). Required: phonenum."""
+        if not phonenum:
             return self._need_more_input(
-                "查询 VoIP 通话记录请提供：关键词(keyword) 或 手机号(phonenum)。",
-                ["keyword", "phonenum"],
+                "To search VoIP call records, please provide: phonenum.",
+                ["phonenum"],
             )
 
-        raw_params = {"keyword": keyword, "phonenum": phonenum}
+        raw_params = {"phonenum": phonenum}
         data, request_url = self._get("/ai/voip", raw_params)
-        return self._wrap_result("/ai/voip", raw_params, data, request_url)
 
-    # 9) /ai/sms
+        jump_url = self._build_voip_jump_url(phonenum)
+
+        if isinstance(data, dict):
+            data_out = dict(data)
+            data_out["jump_url"] = jump_url
+        else:
+            data_out = {"result": data, "jump_url": jump_url}
+
+        return self._wrap_result("/ai/voip", raw_params, data_out, request_url)
+
+    def _build_voip_jump_url(self, phonenum: str) -> str:
+        base = "https://192.168.80.185/vmd/advance_mass"
+        return f"{base}?{urlencode({'keyword': phonenum, 'type': 16})}"
+
     def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询短信记录（/ai/sms），必填：keyword 或 phonenum 至少一个"""
+        """Search SMS records (/ai/sms). Required: keyword or phonenum."""
         if not keyword and not phonenum:
             return self._need_more_input(
-                "查询短信记录请提供：关键词(keyword) 或 手机号(phonenum)。",
+                "To search SMS records, please provide: keyword or phonenum.",
                 ["keyword", "phonenum"],
             )
 
@@ -292,12 +298,11 @@ class Tools:
         data, request_url = self._get("/ai/sms", raw_params)
         return self._wrap_result("/ai/sms", raw_params, data, request_url)
 
-    # 10) /ai/email
     def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
-        """查询邮件记录（/ai/email），必填：keyword 或 email 至少一个"""
+        """Search email records (/ai/email). Required: keyword or email."""
         if not keyword and not email:
             return self._need_more_input(
-                "查询邮件记录请提供：关键词(keyword) 或 邮箱地址(email)。",
+                "To search email records, please provide: keyword or email.",
                 ["keyword", "email"],
             )
 
