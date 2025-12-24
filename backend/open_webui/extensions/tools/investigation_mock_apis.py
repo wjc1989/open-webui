@@ -310,101 +310,7 @@ class Tools:
         return wrapped
 
     # ------------------ AIController API mapping (same signatures as real tool) ------------------
-
-    # 1) /ai/baseinfo
-    def get_person_baseinfo(
-        self,
-        id: Optional[str] = None,
-        passport: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        if not id and not passport and not phonenum:
-            return self._need_more_input(
-                "To query base info, please provide at least one of: id, passport, or phonenum.",
-                ["id", "passport", "phonenum"],
-            )
-
-        raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
-        data, request_url = self._get("/ai/baseinfo", raw_params)
-        return self._wrap_result("/ai/baseinfo", raw_params, data, request_url)
-
-    # 2) /ai/family
-    def get_family_members(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        if not id and not phonenum:
-            return self._need_more_input(
-                "To query family members, please provide id or phonenum.",
-                ["id", "phonenum"],
-            )
-
-        raw_params = {"id": id, "phonenum": phonenum}
-        data, request_url = self._get("/ai/family", raw_params)
-        return self._wrap_result("/ai/family", raw_params, data, request_url)
-
-    # 3) /ai/cr
-    def get_cr_info(
-        self,
-        id: Optional[str] = None,
-        passport: Optional[str] = None,
-        phonenum: Optional[str] = None,
-    ) -> Any:
-        if not id and not passport and not phonenum:
-            return self._need_more_input(
-                "To query CR info, please provide at least one of: id, passport, or phonenum.",
-                ["id", "passport", "phonenum"],
-            )
-
-        raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
-        data, request_url = self._get("/ai/cr", raw_params)
-        return self._wrap_result("/ai/cr", raw_params, data, request_url)
-
-    # 4) /ai/contact
-    def get_top_contacts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        if not id and not phonenum:
-            return self._need_more_input(
-                "To query top contacts, please provide id or phonenum.",
-                ["id", "phonenum"],
-            )
-
-        raw_params = {"id": id, "phonenum": phonenum}
-        data, request_url = self._get("/ai/contact", raw_params)
-        return self._wrap_result("/ai/contact", raw_params, data, request_url)
-
-    # 5) /ai/car
-    def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        if not id and not phonenum:
-            return self._need_more_input(
-                "To query vehicle info, please provide id or phonenum.",
-                ["id", "phonenum"],
-            )
-
-        raw_params = {"id": id, "phonenum": phonenum}
-        data, request_url = self._get("/ai/car", raw_params)
-        return self._wrap_result("/ai/car", raw_params, data, request_url)
-
-    # 6) /ai/social
-    def get_social_accounts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        if not id and not phonenum:
-            return self._need_more_input(
-                "To query social accounts, please provide id or phonenum.",
-                ["id", "phonenum"],
-            )
-
-        raw_params = {"id": id, "phonenum": phonenum}
-        data, request_url = self._get("/ai/social", raw_params)
-        return self._wrap_result("/ai/social", raw_params, data, request_url)
-
-    # 7) /ai/location
-    def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        if not id and not phonenum:
-            return self._need_more_input(
-                "To query locations, please provide id or phonenum.",
-                ["id", "phonenum"],
-            )
-
-        raw_params = {"id": id, "phonenum": phonenum}
-        data, request_url = self._get("/ai/location", raw_params)
-        return self._wrap_result("/ai/location", raw_params, data, request_url)
-
+    # 8) /ai/voip
     # 8) /ai/voip
     def search_voip_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
         if not keyword and not phonenum:
@@ -415,28 +321,10 @@ class Tools:
 
         raw_params = {"keyword": keyword, "phonenum": phonenum}
         data, request_url = self._get("/ai/voip", raw_params)
-        return self._wrap_result("/ai/voip", raw_params, data, request_url)
 
-    # 9) /ai/sms
-    def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        if not keyword and not phonenum:
-            return self._need_more_input(
-                "To search SMS records, please provide keyword or phonenum.",
-                ["keyword", "phonenum"],
-            )
+        wrapped = self._wrap_result("/ai/voip", raw_params, data, request_url)
 
-        raw_params = {"keyword": keyword, "phonenum": phonenum}
-        data, request_url = self._get("/ai/sms", raw_params)
-        return self._wrap_result("/ai/sms", raw_params, data, request_url)
+        # ---- TEST: inject <jump> marker into message (for iframe render test) ----
+        wrapped["message"] = '<jump url="https://www.baidu.com" height="300"></jump>'
 
-    # 10) /ai/email
-    def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
-        if not keyword and not email:
-            return self._need_more_input(
-                "To search email records, please provide keyword or email.",
-                ["keyword", "email"],
-            )
-
-        raw_params = {"keyword": keyword, "email": email}
-        data, request_url = self._get("/ai/email", raw_params)
-        return self._wrap_result("/ai/email", raw_params, data, request_url)
+        return wrapped

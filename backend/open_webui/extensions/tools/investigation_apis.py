@@ -259,7 +259,26 @@ class Tools:
 
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/location", raw_params)
+
         return self._wrap_result("/ai/location", raw_params, data, request_url)
+
+    def _build_mass_jump_url(self, phonenum: str | None = None, keyword: str | None = None,
+                             type_: int | None = None) -> str:
+        base = "https://192.168.80.185/vmd/advance_mass"
+        # 1) 合并 keyword + phonenum（谁有用谁，用 | 分隔）
+        keyword_parts = []
+        if keyword:
+            keyword_parts.append(keyword)
+        if phonenum:
+            keyword_parts.append(phonenum)
+
+        params = {}
+
+        params["type"] = type_
+        if keyword_parts:
+            params["keyword"] = ",".join(keyword_parts)
+
+        return f"{base}?{urlencode(params)}" if params else base
 
     def search_voip_records(self, phonenum: Optional[str] = None) -> Any:
         """Search VoIP call records (/ai/voip). Required: phonenum."""
@@ -268,23 +287,16 @@ class Tools:
                 "To search VoIP call records, please provide: phonenum.",
                 ["phonenum"],
             )
-
         raw_params = {"phonenum": phonenum}
         data, request_url = self._get("/ai/voip", raw_params)
-
-        jump_url = self._build_voip_jump_url(phonenum)
-
+        jump_url = self._build_mass_jump_url(None,phonenum,16)
         if isinstance(data, dict):
             data_out = dict(data)
             data_out["jump_url"] = jump_url
         else:
             data_out = {"result": data, "jump_url": jump_url}
-
         return self._wrap_result("/ai/voip", raw_params, data_out, request_url)
 
-    def _build_voip_jump_url(self, phonenum: str) -> str:
-        base = "https://192.168.80.185/vmd/advance_mass"
-        return f"{base}?{urlencode({'keyword': phonenum, 'type': 16})}"
 
     def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
         """Search SMS records (/ai/sms). Required: keyword or phonenum."""
@@ -296,7 +308,13 @@ class Tools:
 
         raw_params = {"keyword": keyword, "phonenum": phonenum}
         data, request_url = self._get("/ai/sms", raw_params)
-        return self._wrap_result("/ai/sms", raw_params, data, request_url)
+        jump_url = self._build_mass_jump_url(keyword, phonenum, 8)
+        if isinstance(data, dict):
+            data_out = dict(data)
+            data_out["jump_url"] = jump_url
+        else:
+            data_out = {"result": data, "jump_url": jump_url}
+        return self._wrap_result("/ai/sms", raw_params, data_out, request_url)
 
     def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
         """Search email records (/ai/email). Required: keyword or email."""
@@ -308,4 +326,10 @@ class Tools:
 
         raw_params = {"keyword": keyword, "email": email}
         data, request_url = self._get("/ai/email", raw_params)
-        return self._wrap_result("/ai/email", raw_params, data, request_url)
+        jump_url = self._build_mass_jump_url(keyword, email, 5)
+        if isinstance(data, dict):
+            data_out = dict(data)
+            data_out["jump_url"] = jump_url
+        else:
+            data_out = {"result": data, "jump_url": jump_url}
+        return self._wrap_result("/ai/email", raw_params, data_out, request_url)

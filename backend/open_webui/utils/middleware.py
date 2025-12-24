@@ -2099,6 +2099,7 @@ async def process_chat_response(
                         if results:
 
                             tool_calls_display_content = ""
+                            promoted_messages = []
                             for tool_call in tool_calls:
 
                                 tool_call_id = tool_call.get("id", "")
@@ -2116,7 +2117,17 @@ async def process_chat_response(
                                         tool_result = result.get("content", None)
                                         tool_result_files = result.get("files", None)
                                         break
-
+                                if not raw and isinstance(tool_result, str):
+                                    s = tool_result.strip()
+                                    if s.startswith("{") and s.endswith("}"):
+                                        try:
+                                            obj = json.loads(s)
+                                            if isinstance(obj, dict):
+                                                m = obj.get("message")
+                                                if isinstance(m, str) and m.strip():
+                                                    promoted_messages.append(m.strip())
+                                        except Exception:
+                                            pass
                                 if tool_result is not None:
                                     tool_result_embeds = result.get("embeds", "")
                                     tool_calls_display_content = f'{tool_calls_display_content}<details type="tool_calls" done="true" id="{tool_call_id}" name="{tool_name}" arguments="{html.escape(json.dumps(tool_arguments))}" result="{html.escape(json.dumps(tool_result, ensure_ascii=False))}" files="{html.escape(json.dumps(tool_result_files)) if tool_result_files else ""}" embeds="{html.escape(json.dumps(tool_result_embeds))}">\n<summary>Tool Executed</summary>\n</details>\n'
@@ -2125,6 +2136,11 @@ async def process_chat_response(
 
                             if not raw:
                                 content = f"{content}{tool_calls_display_content}"
+                                if promoted_messages:
+                                    if content and not content.endswith("\n"):
+                                        content += "\n"
+                                    content += "\n" + "\n\n".join(promoted_messages) + "\n"
+
                         else:
                             tool_calls_display_content = ""
 
