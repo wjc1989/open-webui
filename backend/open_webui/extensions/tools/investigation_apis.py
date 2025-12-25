@@ -187,6 +187,29 @@ class Tools:
 
         raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
         data, request_url = self._get("/ai/baseinfo", raw_params)
+        base = "https://192.168.80.185:8443/faceboard/#/trackQuery?opentype=ai"
+        searchType = None
+        searchKey = None
+        if id:
+            searchType = 10
+            searchKey = id
+        elif phonenum:
+            searchType = 30
+            searchKey = phonenum
+        elif passport:
+            searchType = 40
+            searchKey = passport
+        jump_url = None
+        if searchType is not None and searchKey is not None:
+            jump_url = f"{base}&{urlencode({'searchType': searchType, 'searchKey': searchKey})}"
+
+        # attach jump_url into data so _wrap_result can append markers
+        if jump_url:
+            if isinstance(data, dict):
+                data["jump_url"] = jump_url
+            else:
+                # 若后端返回不是 dict，为了不丢原始数据，包一层
+                data = {"value": data, "jump_url": jump_url}
         return self._wrap_result("/ai/baseinfo", raw_params, data, request_url)
 
     def get_family_members(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
@@ -199,6 +222,15 @@ class Tools:
 
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/family", raw_params)
+        base = "https://192.168.80.185:8443/anlyze.html?showback=false&opentype=ai&expandBy=famliy"
+        jump_url = f"{base}&{urlencode({'clue': phonenum, 'identityId': id})}"
+        # attach jump_url into data so _wrap_result can append markers
+        if jump_url:
+            if isinstance(data, dict):
+                data["jump_url"] = jump_url
+            else:
+                # 若后端返回不是 dict，为了不丢原始数据，包一层
+                data = {"value": data, "jump_url": jump_url}
         return self._wrap_result("/ai/family", raw_params, data, request_url)
 
     def get_cr_info(self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
@@ -208,9 +240,33 @@ class Tools:
                 "To query CR information, please provide at least one of: id, passport, or phonenum.",
                 ["id", "passport", "phonenum"],
             )
-
         raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
         data, request_url = self._get("/ai/cr", raw_params)
+
+        base="https://192.168.80.185:8443/faceboard/#/ecrPage?opentype=ai&searchKey="
+        # searchType = None
+        searchKey = None
+        if id:
+            # searchType = 10
+            searchKey = id
+        elif phonenum:
+            # searchType = 30
+            searchKey = phonenum
+        elif passport:
+            # searchType = 40
+            searchKey = passport
+        jump_url = None
+        if searchKey is not None:
+            jump_url = f"{base}&{urlencode({'searchType': 11, 'searchKey': searchKey})}"
+
+        # attach jump_url into data so _wrap_result can append markers
+        if jump_url:
+            if isinstance(data, dict):
+                data["jump_url"] = jump_url
+            else:
+                # 若后端返回不是 dict，为了不丢原始数据，包一层
+                data = {"value": data, "jump_url": jump_url}
+
         return self._wrap_result("/ai/cr", raw_params, data, request_url)
 
     def get_top_contacts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
@@ -223,6 +279,7 @@ class Tools:
 
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/contact", raw_params)
+
         return self._wrap_result("/ai/contact", raw_params, data, request_url)
 
     def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
@@ -247,6 +304,7 @@ class Tools:
 
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/social", raw_params)
+
         return self._wrap_result("/ai/social", raw_params, data, request_url)
 
     def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
