@@ -276,10 +276,17 @@ class Tools:
                 "To query top contacts, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
-
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/contact", raw_params)
-
+        base = "https://192.168.80.185:8443/anlyze.html?showback=false&opentype=ai&expandBy=contacts"
+        jump_url = f"{base}&{urlencode({'clue': phonenum, 'identityId': id})}"
+        # attach jump_url into data so _wrap_result can append markers
+        if jump_url:
+            if isinstance(data, dict):
+                data["jump_url"] = jump_url
+            else:
+                # 若后端返回不是 dict，为了不丢原始数据，包一层
+                data = {"value": data, "jump_url": jump_url}
         return self._wrap_result("/ai/contact", raw_params, data, request_url)
 
     def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
@@ -289,9 +296,17 @@ class Tools:
                 "To query vehicle information, please provide: id or phonenum.",
                 ["id", "phonenum"],
             )
-
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/car", raw_params)
+        base = "https://192.168.80.185:8443/faceboard/#/carNo?opentype=ai&queryMode=20&page=1&pageSize=20"
+        jump_url = f"{base}&{urlencode({'phoneNum': phonenum})}"
+        # attach jump_url into data so _wrap_result can append markers
+        if jump_url:
+            if isinstance(data, dict):
+                data["jump_url"] = jump_url
+            else:
+                # 若后端返回不是 dict，为了不丢原始数据，包一层
+                data = {"value": data, "jump_url": jump_url}
         return self._wrap_result("/ai/car", raw_params, data, request_url)
 
     def get_social_accounts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
@@ -304,7 +319,15 @@ class Tools:
 
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/social", raw_params)
-
+        base = "https://192.168.80.185:8443/faceboard/#/snsAccount?opentype=ai&page=1&pageSize=20&queryMode=20"
+        jump_url = f"{base}&{urlencode({'phoneNumber': phonenum})}"
+        # attach jump_url into data so _wrap_result can append markers
+        if jump_url:
+            if isinstance(data, dict):
+                data["jump_url"] = jump_url
+            else:
+                # 若后端返回不是 dict，为了不丢原始数据，包一层
+                data = {"value": data, "jump_url": jump_url}
         return self._wrap_result("/ai/social", raw_params, data, request_url)
 
     def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
