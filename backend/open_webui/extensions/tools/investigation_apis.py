@@ -197,7 +197,7 @@ class Tools:
 
         if jump_url:
             msg_lines.append("")
-            msg_lines.append(f'<jump url="{jump_url}" height="300"></jump>')
+            msg_lines.append(f'<jump url="{jump_url}" height="600"></jump>')
             msg_lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
 
         result = {
