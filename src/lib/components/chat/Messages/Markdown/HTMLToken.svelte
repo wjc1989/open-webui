@@ -79,7 +79,7 @@
 		{@const jumpHeight = (hm && hm[1]) ? Number(hm[1]) : 300}
 
 		{#if jumpUrl}
-			<div class="w-full my-2" style={`height:${jumpHeight}px;`}>
+			<div class="w-full my-2" height=500>
 				<iframe
 					style="width:100%;height:100%;border:0;"
 					src={jumpUrl.replaceAll('&amp;', '&')}
@@ -87,7 +87,7 @@
 					frameborder="0"
 					allowfullscreen
 					sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
-					referrerpolicy="strict-origin-when-cross-origin"
+					referrerpolicy="strict-origin-when-cross-origin" height=500 width="100%"
 				></iframe>
 			</div>
 		{:else}
@@ -137,9 +137,9 @@
 				class="w-full my-2"
 				src={iframeSrc.replaceAll('&amp;', '&')}
 				title="Embedded content"
-				frameborder="0"
+				frameborder="0" width="100%"
 				sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
-				referrerpolicy="strict-origin-when-cross-origin"
+				referrerpolicy="strict-origin-when-cross-origin" height=500
 			></iframe>
 		{:else}
 			{token.text}
@@ -177,7 +177,7 @@
 					: ''}{($settings?.iframeSandboxAllowSameOrigin ?? false) ? ' allow-same-origin' : ''}"
 				referrerpolicy="strict-origin-when-cross-origin"
 				allowfullscreen
-				width="100%"
+				width="100%" height=500
 				on:load={(e) => {
 					try {
 						e.currentTarget.style.height =
