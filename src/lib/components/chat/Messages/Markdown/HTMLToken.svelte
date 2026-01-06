@@ -10,29 +10,9 @@
 
 	let html: string | null = null;
 
-	$: if (token.type === 'html' && token?.text) {
-		// We sanitize but we do NOT rely on iframe-in-html for custom pages.
-		// Instead, we render <jump ...> markers as real iframes (safer and more controllable).
-		html = DOMPurify.sanitize(token.text, {
-			ADD_TAGS: ['jump', 'jumpopen', 'iframe'],
-			ADD_ATTR: [
-				'url',
-				'height',
-				'src',
-				'style',
-				'width',
-				'allow',
-				'allowfullscreen',
-				'frameborder',
-				'sandbox',
-				'referrerpolicy',
-				'title',
-				'target',
-				'rel'
-			]
-		});
-	} else {
-		html = null;
+	// ---- helpers ----
+	function normalizeUrl(rawUrl: string) {
+		return (rawUrl || '').replaceAll('&amp;', '&');
 	}
 
 	function openNewWindow(url: string) {
@@ -43,17 +23,13 @@
 
 	// Open URL in a new "fullscreen-sized" window (browser UI like address bar can't be forced hidden)
 	function openFullscreenWindow(rawUrl: string) {
-		const url = (rawUrl || '').replaceAll('&amp;', '&');
+		const url = normalizeUrl(rawUrl);
 
 		const w = window.screen?.availWidth || window.innerWidth;
 		const h = window.screen?.availHeight || window.innerHeight;
 
 		try {
-			window.open(
-				url,
-				'_blank',
-				`noopener,noreferrer,popup=yes,width=${w},height=${h},left=0,top=0`
-			);
+			window.open(url, '_blank', `noopener,noreferrer,popup=yes,width=${w},height=${h},left=0,top=0`);
 		} catch {
 			try {
 				window.open(url, '_blank', 'noopener,noreferrer');
@@ -61,13 +37,111 @@
 		}
 	}
 
-	function normalizeUrl(rawUrl: string) {
-		return (rawUrl || '').replaceAll('&amp;', '&');
+	function looksLikeJson(s: string) {
+		const t = (s || '').trim();
+		return (t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'));
+	}
+
+	/**
+	 * Extract renderable html from token.text.
+	 * Priority:
+	 * 1) If token.text is JSON: use obj.message, else obj.text, else token.text
+	 * 2) If token.text contains special tags: use token.text
+	 * 3) Else: null
+	 */
+	function extractRenderableHtmlFromTokenText(raw: string): string | null {
+		const t = raw || '';
+		if (!t.trim()) return null;
+
+		// 1) JSON content: try parse {message/text/...}
+		if (looksLikeJson(t)) {
+			try {
+				const obj: any = JSON.parse(t);
+				// tool outputs often are {"message": "...<jump...>", "text": "..."} etc.
+				const candidate =
+					(typeof obj?.message === 'string' && obj.message) ||
+					(typeof obj?.text === 'string' && obj.text) ||
+					(typeof obj?.content === 'string' && obj.content) ||
+					null;
+
+				if (candidate && typeof candidate === 'string') return candidate;
+			} catch {
+				// ignore parse errors and fall through
+			}
+		}
+
+		// 2) Not JSON: if it contains our tags, treat it as renderable HTML
+		const hasRenderableMarker =
+			t.includes('<jump') ||
+			t.includes('<jumpopen') ||
+			t.includes('<iframe') ||
+			t.includes('<video') ||
+			t.includes('<audio') ||
+			t.includes('<status') ||
+			t.includes('<file type="html"');
+
+		return hasRenderableMarker ? t : null;
+	}
+
+	// ---- decide html to render (not only token.type === 'html') ----
+	$: {
+		const rawText = (token as any)?.text || '';
+		const candidate = extractRenderableHtmlFromTokenText(rawText);
+
+		if (candidate) {
+			html = DOMPurify.sanitize(candidate, {
+				ADD_TAGS: ['jump', 'jumpopen', 'iframe', 'video', 'audio', 'status', 'file'],
+				ADD_ATTR: [
+					'url',
+					'height',
+					'src',
+					'style',
+					'width',
+					'allow',
+					'allowfullscreen',
+					'frameborder',
+					'sandbox',
+					'referrerpolicy',
+					'title',
+					'target',
+					'rel',
+					'id',
+					'type',
+					'done'
+				]
+			});
+		} else if (token.type === 'html' && rawText) {
+			// keep original behavior for pure html tokens
+			html = DOMPurify.sanitize(rawText, {
+				ADD_TAGS: ['jump', 'jumpopen', 'iframe', 'video', 'audio', 'status', 'file'],
+				ADD_ATTR: [
+					'url',
+					'height',
+					'src',
+					'style',
+					'width',
+					'allow',
+					'allowfullscreen',
+					'frameborder',
+					'sandbox',
+					'referrerpolicy',
+					'title',
+					'target',
+					'rel',
+					'id',
+					'type',
+					'done'
+				]
+			});
+		} else {
+			html = null;
+		}
 	}
 </script>
 
-{#if token.type === 'html'}
-	{#if html && html.includes('<video')}
+<!-- ✅ 这里不再强依赖 token.type === 'html'：只要 html 存在就按可渲染逻辑走 -->
+{#if html}
+	{#if html.includes('<video')}
 		{@const video = html.match(/<video[^>]*>([\s\S]*?)<\/video>/i)}
 		{@const videoSrc = video && video[1]}
 		{#if videoSrc}
@@ -85,7 +159,7 @@
 			{token.text}
 		{/if}
 
-	{:else if html && html.includes('<audio')}
+	{:else if html.includes('<audio')}
 		{@const audio = html.match(/<audio[^>]*>([\s\S]*?)<\/audio>/i)}
 		{@const audioSrc = audio && audio[1]}
 		{#if audioSrc}
@@ -96,7 +170,7 @@
 		{/if}
 
 	<!-- 1) Custom marker: <jump url="..."></jump> -->
-	{:else if html && html.includes('<jump')}
+	{:else if html.includes('<jump')}
 		{@const jm = html.match(/<jump\s+[^>]*url="([^"]+)"[^>]*>/i)}
 		{@const jumpUrl = jm && jm[1]}
 		{@const u = jumpUrl ? normalizeUrl(jumpUrl) : ''}
@@ -141,7 +215,7 @@
 		{/if}
 
 	<!-- 2) Backward-compatible marker: <jumpopen url="..."></jumpopen> -->
-	{:else if html && html.includes('<jumpopen')}
+	{:else if html.includes('<jumpopen')}
 		{@const om = html.match(/<jumpopen\s+[^>]*url="([^"]+)"[^>]*>/i)}
 		{@const openUrl = om && om[1]}
 		{@const openU = openUrl ? normalizeUrl(openUrl) : ''}
@@ -158,20 +232,18 @@
 			{token.text}
 		{/if}
 
-	<!-- 3) YouTube iframe: keep existing behavior; toolbar BELOW -->
-	{:else if token.text &&
-		token.text.match(
-			/<iframe\s+[^>]*src="https:\/\/www\.youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?[^"]*)?"[^>]*><\/iframe>/
-		)}
-		{@const match = token.text.match(
-			/<iframe\s+[^>]*src="https:\/\/www\.youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?[^"]*)?"[^>]*><\/iframe>/
+	<!-- 3) YouTube iframe -->
+	{:else if html.match(
+		/<iframe\s+[^>]*src="https:\/\/www\.youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?[^"]*)?"[^>]*>(?:<\/iframe>|\/>)/i
+	)}
+		{@const match = html.match(
+			/<iframe\s+[^>]*src="https:\/\/www\.youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?[^"]*)?"[^>]*>(?:<\/iframe>|\/>)/i
 		)}
 		{@const ytId = match && match[1]}
 		{@const ytUrl = ytId ? `https://www.youtube.com/embed/${ytId}` : ''}
 
 		{#if ytUrl}
 			<div class="w-full my-2">
-				<!-- iframe -->
 				<div class="w-full border border-gray-200 dark:border-gray-800 rounded-t-md overflow-hidden">
 					<iframe
 						class="w-full aspect-video"
@@ -184,7 +256,6 @@
 					></iframe>
 				</div>
 
-				<!-- toolbar BELOW -->
 				<div
 					class="flex items-center justify-between px-2 py-1 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-md bg-gray-50 dark:bg-gray-900/40"
 				>
@@ -203,16 +274,14 @@
 			</div>
 		{/if}
 
-	<!-- 4) Generic iframe (fallback): use sanitized html, NOT token.text; toolbar BELOW -->
-	{:else if html && html.includes('<iframe')}
-		<!-- support both <iframe ...></iframe> and self-closing <iframe ... /> -->
+	<!-- 4) Generic iframe (fallback) -->
+	{:else if html.includes('<iframe')}
 		{@const match = html.match(/<iframe\s+[^>]*src="([^"]+)"[^>]*(?:><\/iframe>|\/>)/i)}
 		{@const iframeSrc = match && match[1]}
 		{@const iu = iframeSrc ? normalizeUrl(iframeSrc) : ''}
 
 		{#if iu}
 			<div class="w-full my-2">
-				<!-- iframe -->
 				<div class="w-full border border-gray-200 dark:border-gray-800 rounded-t-md overflow-hidden">
 					<iframe
 						class="w-full"
@@ -226,7 +295,6 @@
 					></iframe>
 				</div>
 
-				<!-- toolbar BELOW -->
 				<div
 					class="flex items-center justify-between px-2 py-1 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-md bg-gray-50 dark:bg-gray-900/40"
 				>
@@ -247,8 +315,8 @@
 			{token.text}
 		{/if}
 
-	{:else if token.text && token.text.includes('<status')}
-		{@const match = token.text.match(/<status title="([^"]+)" done="(true|false)" ?\/?>/)}
+	{:else if html.includes('<status')}
+		{@const match = html.match(/<status title="([^"]+)" done="(true|false)" ?\/?>/)}
 		{@const statusTitle = match && match[1]}
 		{@const statusDone = match && match[2] === 'true'}
 		{#if statusTitle}
@@ -265,15 +333,14 @@
 			{token.text}
 		{/if}
 
-	<!-- file html iframe: toolbar BELOW -->
-	{:else if token.text.includes(`<file type="html"`)}
-		{@const match = token.text.match(/<file type="html" id="([^"]+)"/)}
+	<!-- file html iframe -->
+	{:else if html.includes(`<file type="html"`)}
+		{@const match = html.match(/<file type="html" id="([^"]+)"/)}
 		{@const fileId = match && match[1]}
 		{@const fileUrl = fileId ? `${WEBUI_BASE_URL}/api/v1/files/${fileId}/content/html` : ''}
 
 		{#if fileUrl}
 			<div class="w-full my-2">
-				<!-- iframe -->
 				<div class="w-full border border-gray-200 dark:border-gray-800 rounded-t-md overflow-hidden">
 					<iframe
 						class="w-full"
@@ -296,7 +363,6 @@
 					></iframe>
 				</div>
 
-				<!-- toolbar BELOW -->
 				<div
 					class="flex items-center justify-between px-2 py-1 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-md bg-gray-50 dark:bg-gray-900/40"
 				>
@@ -315,10 +381,13 @@
 			</div>
 		{/if}
 
-	{:else if token.text.trim().match(/^<br\s*\/?>$/i)}
+	{:else if token.text?.trim?.().match(/^<br\s*\/?>$/i)}
 		<br />
 
 	{:else}
 		{token.text}
 	{/if}
+{:else}
+	<!-- 没有可渲染 html，就回退原始渲染 -->
+	{token.text}
 {/if}

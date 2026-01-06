@@ -1,7 +1,7 @@
 """
 title: ESCT AI Insight
 author: OneCloudTech
-description: Call backend /ai APIs to query person base info, family, contacts, social accounts, locations, and VoIP/SMS/Email records
+description: Tools for UM system. Provides UM tools calling backend /ai/* APIs. Records (voip/sms/email) return plain text so <jump> is always rendered as iframe in Open WebUI.
 version: 0.4.0
 requirements: requests
 """
@@ -22,6 +22,10 @@ class Tools:
     - If the tool returns {"found": true, "data": ...}, it MUST be treated as "found",
       even if the original query parameter (e.g. phone number) is not echoed in data.
     - Only when found == false, or a clear error is returned, can it be treated as "not found".
+
+    NOTE:
+    - For records endpoints (voip/sms/email), we return PLAIN TEXT (string) containing <jump ...> markers.
+      This avoids the model "summarizing" and dropping markers, so iframe rendering is stable.
     """
 
     def __init__(self):
@@ -38,7 +42,6 @@ class Tools:
             )
 
         # 复用 HTTP 连接（频繁请求更快、更省资源）
-        # 注：如果你需要统一 headers / auth，也可以在 session.headers 里设置
         self._session = requests.Session()
 
     class Valves(BaseModel):
@@ -77,9 +80,6 @@ class Tools:
         统一 found 判定（当后端没有明确提供 found 字段时使用）：
         - None / 空 list / 空 dict => not found
         - 其它 => found
-
-        注意：这里不把 0 / False / "" 直接判定为 not found，
-        因为某些接口可能合法返回 0/False 作为数据（比如计数/状态）。
         """
         if data is None:
             return False
@@ -88,9 +88,7 @@ class Tools:
         return True
 
     def _build_full_url_with_params(self, url: str, params: Dict[str, Any]) -> str:
-        """
-        生成可直接打开的完整 URL（含 query string），用于审计/排查
-        """
+        """生成可直接打开的完整 URL（含 query string），用于审计/排查"""
         req = requests.Request("GET", url, params=params).prepare()
         return req.url
 
@@ -110,7 +108,7 @@ class Tools:
         self.logger.info(f"Calling backend GET {request_url}")
 
         try:
-            resp = self._session.get(url, params=query, timeout=10)
+            resp = self._session.get(url, params=query, timeout=15)
             self.logger.info(f"Backend response status={resp.status_code} for {request_url}")
             resp.raise_for_status()
         except Exception as e:
@@ -151,16 +149,13 @@ class Tools:
             "message": message,
             "missing_fields": missing_fields or [],
         }
-        self.logger.warning(f"Missing required params: {payload['missing_fields']}, message='{message}'")
+        self.logger.warning(
+            f"Missing required params: {payload['missing_fields']}, message='{message}'"
+        )
         return payload
 
     def _attach_jump_url(self, data: Any, jump_url: Optional[str]) -> Any:
-        """
-        把 jump_url “安全地”附加到 data 上，供 _wrap_result 生成 <jump> 标记使用。
-
-        - 如果 data 是 dict：返回一个新 dict（避免修改原始 data 引起副作用）
-        - 如果 data 不是 dict：包一层 {"value": 原data, "jump_url": ...}
-        """
+        """把 jump_url 安全附加到 data 上（dict 直接加；非 dict 包一层）"""
         if not jump_url:
             return data
         if isinstance(data, dict):
@@ -171,47 +166,98 @@ class Tools:
 
     def _wrap_result(self, endpoint: str, raw_params: dict, data: Any, request_url: str) -> Any:
         """
-        统一包装 tool 输出。
-
-        关键规则：
-        - <jump ...> 标记放在 message 里（由前端渲染 iframe / open 按钮）
-        - 为避免 message 外出现可点击链接：把 jump_url 从 data 中剔除（但保留 _jump_url 便于调试）
+        Unified tool output (baseinfo style) so frontend can always render <jump>.
+        Return keys:
+          - found
+          - request_url
+          - data
+          - message   (contains <jump> markers)
+          - text      (same as message, for compatibility)
+          - _jump_url (optional)
         """
-        # found 判定：优先尊重后端返回的 found 字段
+        # found：优先后端明确 found
+        found = None
         if isinstance(data, dict) and "found" in data:
             found = bool(data.get("found"))
-        else:
-            found = self._normalize_found_flag(data)
 
-        # jump_url 只可能在 dict 上
+        # jump_url
         jump_url = data.get("jump_url") if isinstance(data, dict) else None
 
-        # data_out：剔除 jump_url，避免被前端当成普通链接渲染
+        # data_out：剔除 jump_url
         data_out = data
         if jump_url and isinstance(data, dict):
             data_out = dict(data)
             data_out.pop("jump_url", None)
 
-        # message：给前端渲染 jump 用
-        msg_lines = ["Relevant records were found." if found else "No relevant records were found."]
+        # 如果没有 found：按真实业务数据判定
+        if found is None:
+            if isinstance(data, dict) and "value" in data:
+                found = self._normalize_found_flag(data.get("value"))
+            else:
+                found = self._normalize_found_flag(data)
+
+        lines = ["Relevant records were found." if found else "No relevant records were found."]
 
         if jump_url:
-            msg_lines.append("")
-            msg_lines.append(f'<jump url="{jump_url}" height="600"></jump>')
-            msg_lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
+            lines.append("")
+            lines.append(f'<jump url="{jump_url}" height="600"></jump>')
+            lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
+
+        ui_text = "\n".join(lines)
 
         result = {
             "found": found,
-            "request_url": request_url,  # 审计：后端真实调用地址
-            "data": data_out,            # 业务数据（不含 jump_url）
-            "message": "\n".join(msg_lines),
+            "request_url": request_url,
+            "data": data_out,
+            "message": ui_text,
+            "text": ui_text,
         }
-
-        # 私有保存 jump_url（不给普通 UI 自动变成链接）
         if jump_url:
             result["_jump_url"] = jump_url
-
         return result
+
+    # --------- NEW: Plain text wrapper for records endpoints (voip/sms/email) ---------
+
+    def _wrap_plain_text_records(
+        self,
+        *,
+        title: str,
+        data: Any,
+        request_url: str,
+        jump_url: Optional[str],
+        found: Optional[bool] = None,
+    ) -> str:
+        """
+        Records endpoints return PLAIN TEXT to avoid model dropping <jump>.
+        We still log/keep request_url in server logs.
+
+        Output includes:
+          - title line
+          - request_url (optional, but kept for audit; if you don't want to expose it, comment it out)
+          - <jump> and <jumpopen> markers
+        """
+        if found is None:
+            # data may be {"value": [...], ...} or list/dict
+            if isinstance(data, dict) and "value" in data:
+                found = self._normalize_found_flag(data.get("value"))
+            else:
+                found = self._normalize_found_flag(data)
+
+        lines: List[str] = []
+        lines.append(f"{title}：{'已查到相关记录' if found else '未查到相关记录'}")
+        # 如果你不想在聊天里暴露 request_url，把下面两行注释掉即可
+        lines.append(f"request_url: {request_url}")
+
+        if jump_url:
+            lines.append("")
+            lines.append(f'<jump url="{jump_url}" height="600"></jump>')
+            lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
+        else:
+            # 没有 jump_url 也给个提示
+            lines.append("")
+            lines.append("（无可用跳转链接）")
+
+        return "\n".join(lines)
 
     # ------------------ Jump URL builders ------------------
 
@@ -244,13 +290,16 @@ class Tools:
         return f"{base}&{urlencode({'searchType': 11, 'searchKey': search_key})}"
 
     def _build_mass_jump_url(
-        self, *, phonenum: Optional[str] = None, keyword: Optional[str] = None, type_: Optional[int] = None
+        self,
+        *,
+        phonenum: Optional[str] = None,
+        keyword: Optional[str] = None,
+        type_: Optional[int] = None,
     ) -> str:
         """
         vmd/advance_mass 跳转：
         - type: 模块类型（voip/sms/email 对应不同 type）
         - keyword: 把 keyword + phonenum 合并，用逗号连接（谁有用谁）
-        使用 keyword-only 参数，避免调用时把参数顺序写反
         """
         base = "https://192.168.80.185/vmd/advance_mass"
 
@@ -268,25 +317,13 @@ class Tools:
 
         return f"{base}?{urlencode(params)}" if params else base
 
-    def _search_with_mass_jump(
-        self,
-        endpoint: str,
-        raw_params: Dict[str, Any],
-        *,
-        type_: int,
-        phonenum: Optional[str] = None,
-        keyword: Optional[str] = None,
-    ) -> Any:
-        """通用搜索封装：调用后端 + 生成 advance_mass 跳转 + wrap_result"""
-        data, request_url = self._get(endpoint, raw_params)
-        jump_url = self._build_mass_jump_url(phonenum=phonenum, keyword=keyword, type_=type_)
-        data = self._attach_jump_url(data, jump_url)
-        return self._wrap_result(endpoint, raw_params, data, request_url)
-
     # ------------------ AIController API mappings ------------------
 
     def get_person_baseinfo(
-        self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None
+        self,
+        id: Optional[str] = None,
+        passport: Optional[str] = None,
+        phonenum: Optional[str] = None,
     ) -> Any:
         """查询人员基础信息（/ai/baseinfo），至少提供 id/passport/phonenum 之一"""
         if not id and not passport and not phonenum:
@@ -298,7 +335,6 @@ class Tools:
         raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
         data, request_url = self._get("/ai/baseinfo", raw_params)
 
-        # trackQuery 跳转
         jump_url = self._build_track_jump(id=id, phonenum=phonenum, passport=passport)
         data = self._attach_jump_url(data, jump_url)
 
@@ -315,16 +351,13 @@ class Tools:
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/family", raw_params)
 
-        # 注意：expandBy=famliy 这里拼写看起来像 typo，但可能是前端约定参数，谨慎不要擅自改
         base = "https://192.168.80.185:8443/anlyze.html?showback=false&opentype=ai&expandBy=famliy"
         jump_url = f"{base}&{urlencode({'clue': phonenum, 'identityId': id})}"
         data = self._attach_jump_url(data, jump_url)
 
         return self._wrap_result("/ai/family", raw_params, data, request_url)
 
-    def get_cr_info(
-        self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None
-    ) -> Any:
+    def get_cr_info(self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
         """查询 CR 信息（/ai/cr），至少提供 id/passport/phonenum 之一"""
         if not id and not passport and not phonenum:
             return self._need_more_input(
@@ -335,7 +368,6 @@ class Tools:
         raw_params = {"id": id, "passport": passport, "phonenum": phonenum}
         data, request_url = self._get("/ai/cr", raw_params)
 
-        # ecrPage 跳转：取优先存在的 key
         search_key = id or phonenum or passport
         jump_url = self._build_ecr_jump(search_key)
         data = self._attach_jump_url(data, jump_url)
@@ -404,11 +436,16 @@ class Tools:
         raw_params = {"id": id, "phonenum": phonenum}
         data, request_url = self._get("/ai/location", raw_params)
 
-        # 这里没有跳转需求，直接 wrap
+        base = "https://192.168.80.185:8443/vthink-ui-v3/#/tracking?opentype=ai"
+        jump_url = f"{base}&{urlencode({'searchKey': phonenum})}"
+        data = self._attach_jump_url(data, jump_url)
+
         return self._wrap_result("/ai/location", raw_params, data, request_url)
 
+    # ------------------ Records: PLAIN TEXT mode ------------------
+
     def search_voip_records(self, phonenum: Optional[str] = None) -> Any:
-        """查询 VoIP 通话记录（/ai/voip），必填 phonenum"""
+        """查询 VoIP 通话记录（/ai/voip），必填 phonenum。返回纯文本（含 <jump>）"""
         if not phonenum:
             return self._need_more_input(
                 "To search VoIP call records, please provide: phonenum.",
@@ -416,16 +453,24 @@ class Tools:
             )
 
         raw_params = {"phonenum": phonenum}
-        return self._search_with_mass_jump(
-            "/ai/voip",
-            raw_params,
-            type_=16,          # 你现有系统里的 voip type
+        data, request_url = self._get("/ai/voip", raw_params)
+
+        jump_url = self._build_mass_jump_url(
             phonenum=phonenum,
             keyword=None,
+            type_=16,  # 你现有系统里的 voip type
+        )
+
+        # 纯文本输出（稳定渲染 iframe）
+        return self._wrap_plain_text_records(
+            title="VoIP Records",
+            data=data,
+            request_url=request_url,
+            jump_url=jump_url,
         )
 
     def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
-        """查询短信记录（/ai/sms），keyword/phonenum 至少一个"""
+        """查询短信记录（/ai/sms），keyword/phonenum 至少一个。返回纯文本（含 <jump>）"""
         if not keyword and not phonenum:
             return self._need_more_input(
                 "To search SMS records, please provide: keyword or phonenum.",
@@ -433,16 +478,23 @@ class Tools:
             )
 
         raw_params = {"keyword": keyword, "phonenum": phonenum}
-        return self._search_with_mass_jump(
-            "/ai/sms",
-            raw_params,
-            type_=8,          # 你现有系统里的 sms type
+        data, request_url = self._get("/ai/sms", raw_params)
+
+        jump_url = self._build_mass_jump_url(
             phonenum=phonenum,
             keyword=keyword,
+            type_=8,  # 你现有系统里的 sms type
+        )
+
+        return self._wrap_plain_text_records(
+            title="SMS Records",
+            data=data,
+            request_url=request_url,
+            jump_url=jump_url,
         )
 
     def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
-        """查询邮件记录（/ai/email），keyword/email 至少一个"""
+        """查询邮件记录（/ai/email），keyword/email 至少一个。返回纯文本（含 <jump>）"""
         if not keyword and not email:
             return self._need_more_input(
                 "To search email records, please provide: keyword or email.",
@@ -450,11 +502,18 @@ class Tools:
             )
 
         raw_params = {"keyword": keyword, "email": email}
+        data, request_url = self._get("/ai/email", raw_params)
+
         # 保持你原来的行为：mass 的 keyword 里拼 keyword + email
-        return self._search_with_mass_jump(
-            "/ai/email",
-            raw_params,
-            type_=5,          # 你现有系统里的 email type
-            phonenum=email,   # 复用字段名拼接（逻辑不变）
+        jump_url = self._build_mass_jump_url(
+            phonenum=email,   # 用 phonenum 这个字段名做拼接，不改变原逻辑
             keyword=keyword,
+            type_=5,  # 你现有系统里的 email type
+        )
+
+        return self._wrap_plain_text_records(
+            title="Email Records",
+            data=data,
+            request_url=request_url,
+            jump_url=jump_url,
         )
