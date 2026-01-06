@@ -15,17 +15,18 @@ from urllib.parse import urlencode
 
 class Tools:
     """
-    Tool class: maps Open WebUI Tool calls to backend AIController APIs.
-    AIController Base Path: /ai
+    UM_chat is an investigative backend tool.
 
-    IMPORTANT RULES (for model / caller):
-    - If the tool returns {"found": true, "data": ...}, it MUST be treated as "found",
-      even if the original query parameter (e.g. phone number) is not echoed in data.
-    - Only when found == false, or a clear error is returned, can it be treated as "not found".
+    Usage rules:
+    - Call this tool ONLY when investigation data is required.
+    - Never guess or auto-fill missing parameters.
+    - If required parameters are missing, wait for user input.
 
-    NOTE:
-    - For records endpoints (voip/sms/email), we return PLAIN TEXT (string) containing <jump ...> markers.
-      This avoids the model "summarizing" and dropping markers, so iframe rendering is stable.
+    Response handling rules:
+    - If "found" is true, the result MUST be treated as valid.
+    - If a "message" field exists, it MUST be returned verbatim as the final answer.
+    - Never summarize, interpret, or rewrite the message.
+    - Preserve <jump>   and any embedded markers exactly.
     """
 
     def __init__(self):
@@ -109,7 +110,9 @@ class Tools:
 
         try:
             resp = self._session.get(url, params=query, timeout=15)
-            self.logger.info(f"Backend response status={resp.status_code} for {request_url}")
+            self.logger.info(
+                f"Backend response status={resp.status_code} for {request_url}"
+            )
             resp.raise_for_status()
         except Exception as e:
             self.logger.error(f"HTTP error while calling {request_url}: {e}")
@@ -135,10 +138,14 @@ class Tools:
             return body.get("data"), request_url
 
         # 非标准返回，直接透传
-        self.logger.warning(f"Backend did not return AjaxResult; returning raw body. url={request_url}")
+        self.logger.warning(
+            f"Backend did not return AjaxResult; returning raw body. url={request_url}"
+        )
         return body, request_url
 
-    def _need_more_input(self, message: str, missing_fields: Optional[List[str]] = None) -> Dict[str, Any]:
+    def _need_more_input(
+        self, message: str, missing_fields: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         必填参数缺失时：
         - 不调用后端
@@ -164,7 +171,9 @@ class Tools:
             return new_data
         return {"value": data, "jump_url": jump_url}
 
-    def _wrap_result(self, endpoint: str, raw_params: dict, data: Any, request_url: str) -> Any:
+    def _wrap_result(
+        self, endpoint: str, raw_params: dict, data: Any, request_url: str
+    ) -> Any:
         """
         Unified tool output (baseinfo style) so frontend can always render <jump>.
         Return keys:
@@ -196,12 +205,17 @@ class Tools:
             else:
                 found = self._normalize_found_flag(data)
 
-        lines = ["Relevant records were found." if found else "No relevant records were found."]
+        lines = [
+            (
+                "Relevant records were found."
+                if found
+                else "No relevant records were found."
+            )
+        ]
 
         if jump_url:
             lines.append("")
             lines.append(f'<jump url="{jump_url}" height="600"></jump>')
-            lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
 
         ui_text = "\n".join(lines)
 
@@ -209,14 +223,13 @@ class Tools:
             "found": found,
             "request_url": request_url,
             "data": data_out,
-            "message": ui_text,
             "text": ui_text,
         }
         if jump_url:
             result["_jump_url"] = jump_url
         return result
 
-    # --------- NEW: Plain text wrapper for records endpoints (voip/sms/email) ---------
+    # --------- PLAIN TEXT wrapper for records endpoints (voip/sms/email) ---------
 
     def _wrap_plain_text_records(
         self,
@@ -234,7 +247,7 @@ class Tools:
         Output includes:
           - title line
           - request_url (optional, but kept for audit; if you don't want to expose it, comment it out)
-          - <jump> and <jumpopen> markers
+          - <jump> markers
         """
         if found is None:
             # data may be {"value": [...], ...} or list/dict
@@ -244,24 +257,26 @@ class Tools:
                 found = self._normalize_found_flag(data)
 
         lines: List[str] = []
-        lines.append(f"{title}：{'已查到相关记录' if found else '未查到相关记录'}")
-        # 如果你不想在聊天里暴露 request_url，把下面两行注释掉即可
+        lines.append(
+            f"{title}: {'Relevant records were found.' if found else 'No relevant records were found.'}"
+        )
+        # If you don't want to expose request_url in chat, comment out the next line
         lines.append(f"request_url: {request_url}")
 
         if jump_url:
             lines.append("")
             lines.append(f'<jump url="{jump_url}" height="600"></jump>')
-            lines.append(f'<jumpopen url="{jump_url}"></jumpopen>')
         else:
-            # 没有 jump_url 也给个提示
             lines.append("")
-            lines.append("（无可用跳转链接）")
+            lines.append("(No available jump link.)")
 
         return "\n".join(lines)
 
     # ------------------ Jump URL builders ------------------
 
-    def _build_track_jump(self, id: Optional[str], phonenum: Optional[str], passport: Optional[str]) -> Optional[str]:
+    def _build_track_jump(
+        self, id: Optional[str], phonenum: Optional[str], passport: Optional[str]
+    ) -> Optional[str]:
         """
         faceboard trackQuery 跳转：
         - id      -> searchType=10
@@ -301,7 +316,7 @@ class Tools:
         - type: 模块类型（voip/sms/email 对应不同 type）
         - keyword: 把 keyword + phonenum 合并，用逗号连接（谁有用谁）
         """
-        base = "https://192.168.80.185/vmd/advance_mass"
+        base = "https://192.168.80.185/vmd/advance_mass?opentype=ai"
 
         parts: List[str] = []
         if keyword:
@@ -315,7 +330,14 @@ class Tools:
         if parts:
             params["keyword"] = ",".join(parts)
 
-        return f"{base}?{urlencode(params)}" if params else base
+        return f"{base}&{urlencode(params)}" if params else base
+
+    def _build_export_person_word_url(self, id_no: str) -> str:
+        """
+        Export Word URL:
+        /business/persona/exportWord?idNo=xxxx
+        """
+        return f"https://192.168.80.185/prod-api/business/persona/exportWord?{urlencode({'idNo': id_no})}"
 
     # ------------------ AIController API mappings ------------------
 
@@ -340,7 +362,9 @@ class Tools:
 
         return self._wrap_result("/ai/baseinfo", raw_params, data, request_url)
 
-    def get_family_members(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def get_family_members(
+        self, id: Optional[str] = None, phonenum: Optional[str] = None
+    ) -> Any:
         """查询家庭成员（/ai/family），至少提供 id/phonenum 之一"""
         if not id and not phonenum:
             return self._need_more_input(
@@ -357,7 +381,12 @@ class Tools:
 
         return self._wrap_result("/ai/family", raw_params, data, request_url)
 
-    def get_cr_info(self, id: Optional[str] = None, passport: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def get_cr_info(
+        self,
+        id: Optional[str] = None,
+        passport: Optional[str] = None,
+        phonenum: Optional[str] = None,
+    ) -> Any:
         """查询 CR 信息（/ai/cr），至少提供 id/passport/phonenum 之一"""
         if not id and not passport and not phonenum:
             return self._need_more_input(
@@ -374,7 +403,9 @@ class Tools:
 
         return self._wrap_result("/ai/cr", raw_params, data, request_url)
 
-    def get_top_contacts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def get_top_contacts(
+        self, id: Optional[str] = None, phonenum: Optional[str] = None
+    ) -> Any:
         """查询高频联系人（/ai/contact），至少提供 id/phonenum 之一"""
         if not id and not phonenum:
             return self._need_more_input(
@@ -391,7 +422,9 @@ class Tools:
 
         return self._wrap_result("/ai/contact", raw_params, data, request_url)
 
-    def get_vehicles(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def get_vehicles(
+        self, id: Optional[str] = None, phonenum: Optional[str] = None
+    ) -> Any:
         """查询车辆信息（/ai/car），至少提供 id/phonenum 之一"""
         if not id and not phonenum:
             return self._need_more_input(
@@ -408,7 +441,9 @@ class Tools:
 
         return self._wrap_result("/ai/car", raw_params, data, request_url)
 
-    def get_social_accounts(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def get_social_accounts(
+        self, id: Optional[str] = None, phonenum: Optional[str] = None
+    ) -> Any:
         """查询社交账号聚合（/ai/social），至少提供 id/phonenum 之一"""
         if not id and not phonenum:
             return self._need_more_input(
@@ -425,7 +460,9 @@ class Tools:
 
         return self._wrap_result("/ai/social", raw_params, data, request_url)
 
-    def get_locations(self, id: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def get_locations(
+        self, id: Optional[str] = None, phonenum: Optional[str] = None
+    ) -> Any:
         """查询位置列表（/ai/location），至少提供 id/phonenum 之一"""
         if not id and not phonenum:
             return self._need_more_input(
@@ -461,7 +498,6 @@ class Tools:
             type_=16,  # 你现有系统里的 voip type
         )
 
-        # 纯文本输出（稳定渲染 iframe）
         return self._wrap_plain_text_records(
             title="VoIP Records",
             data=data,
@@ -469,7 +505,9 @@ class Tools:
             jump_url=jump_url,
         )
 
-    def search_sms_records(self, keyword: Optional[str] = None, phonenum: Optional[str] = None) -> Any:
+    def search_sms_records(
+        self, keyword: Optional[str] = None, phonenum: Optional[str] = None
+    ) -> Any:
         """查询短信记录（/ai/sms），keyword/phonenum 至少一个。返回纯文本（含 <jump>）"""
         if not keyword and not phonenum:
             return self._need_more_input(
@@ -493,7 +531,9 @@ class Tools:
             jump_url=jump_url,
         )
 
-    def search_email_records(self, keyword: Optional[str] = None, email: Optional[str] = None) -> Any:
+    def search_email_records(
+        self, keyword: Optional[str] = None, email: Optional[str] = None
+    ) -> Any:
         """查询邮件记录（/ai/email），keyword/email 至少一个。返回纯文本（含 <jump>）"""
         if not keyword and not email:
             return self._need_more_input(
@@ -506,7 +546,7 @@ class Tools:
 
         # 保持你原来的行为：mass 的 keyword 里拼 keyword + email
         jump_url = self._build_mass_jump_url(
-            phonenum=email,   # 用 phonenum 这个字段名做拼接，不改变原逻辑
+            phonenum=email,  # 用 phonenum 这个字段名做拼接，不改变原逻辑
             keyword=keyword,
             type_=5,  # 你现有系统里的 email type
         )
@@ -517,3 +557,25 @@ class Tools:
             request_url=request_url,
             jump_url=jump_url,
         )
+
+    # ------------------ NEW: Export person Word ------------------
+
+    def exportPerson(self, idNo: Optional[str] = None) -> Any:
+        """
+        Export person profile as a Word document.
+        Required: idNo
+
+        Return a DIRECT DOWNLOAD LINK (plain text), NOT an iframe <jump>.
+        URL:
+          {backend_base_url}/business/persona/exportWord?idNo=xxxx
+        """
+        if not idNo:
+            return self._need_more_input(
+                "To export the person profile to Word, please provide: idNo.",
+                ["idNo"],
+            )
+
+        export_url = self._build_export_person_word_url(str(idNo).strip())
+
+        # Direct link for user click-to-download (no <jump>)
+        return f"✅ Export is ready: [Download Word]({export_url})"
