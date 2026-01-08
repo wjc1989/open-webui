@@ -257,9 +257,7 @@ class Tools:
                 found = self._normalize_found_flag(data)
 
         lines: List[str] = []
-        lines.append(
-            f"{title}: {'Relevant records were found.' if found else 'No relevant records were found.'}"
-        )
+        lines.append(f"{title}: {'Relevant records were found.' if found else 'No relevant records were found.'}")
         # If you don't want to expose request_url in chat, comment out the next line
         lines.append(f"request_url: {request_url}")
 
@@ -316,7 +314,7 @@ class Tools:
         - type: 模块类型（voip/sms/email 对应不同 type）
         - keyword: 把 keyword + phonenum 合并，用逗号连接（谁有用谁）
         """
-        base = "https://192.168.80.185/vmd/advance_mass?opentype=ai"
+        base = "https://192.168.80.185/vmd/advance_mass"
 
         parts: List[str] = []
         if keyword:
@@ -330,14 +328,15 @@ class Tools:
         if parts:
             params["keyword"] = ",".join(parts)
 
-        return f"{base}&{urlencode(params)}" if params else base
+        return f"{base}?{urlencode(params)}" if params else base
 
     def _build_export_person_word_url(self, id_no: str) -> str:
         """
         Export Word URL:
         /business/persona/exportWord?idNo=xxxx
         """
-        return f"https://192.168.80.185/prod-api/business/persona/exportWord?{urlencode({'idNo': id_no})}"
+        base = self.valves.backend_base_url.rstrip("/")
+        return f"{base}/business/persona/exportWord?{urlencode({'idNo': id_no})}"
 
     # ------------------ AIController API mappings ------------------
 
@@ -565,9 +564,7 @@ class Tools:
         Export person profile as a Word document.
         Required: idNo
 
-        Return a DIRECT DOWNLOAD LINK (plain text), NOT an iframe <jump>.
-        URL:
-          {backend_base_url}/business/persona/exportWord?idNo=xxxx
+        Return a MARKDOWN LINK so the URL is not shown as plain text.
         """
         if not idNo:
             return self._need_more_input(
@@ -577,5 +574,6 @@ class Tools:
 
         export_url = self._build_export_person_word_url(str(idNo).strip())
 
-        # Direct link for user click-to-download (no <jump>)
+        # Hide the raw URL behind clickable text
         return f"✅ Export is ready: [Download Word]({export_url})"
+
