@@ -1,5 +1,5 @@
 """
-title: ESCT AI Insight
+title: UM AI Insight
 author: OneCloudTech
 description: Tools for UM system. Provides UM tools calling backend /ai/* APIs. Records (voip/sms/email) return plain text so <jump> is always rendered as iframe in Open WebUI.
 version: 0.4.0
@@ -35,7 +35,7 @@ class Tools:
         self.valves = self.Valves()
 
         # ----- logging -----
-        self.logger = logging.getLogger("ESCT_AI_Insight")
+        self.logger = logging.getLogger("UM_AI_Insight")
         if not self.logger.handlers:
             logging.basicConfig(
                 level=logging.INFO,
@@ -257,7 +257,9 @@ class Tools:
                 found = self._normalize_found_flag(data)
 
         lines: List[str] = []
-        lines.append(f"{title}: {'Relevant records were found.' if found else 'No relevant records were found.'}")
+        lines.append(
+            f"{title}: {'Relevant records were found.' if found else 'No relevant records were found.'}"
+        )
         # If you don't want to expose request_url in chat, comment out the next line
         lines.append(f"request_url: {request_url}")
 
@@ -314,7 +316,7 @@ class Tools:
         - type: 模块类型（voip/sms/email 对应不同 type）
         - keyword: 把 keyword + phonenum 合并，用逗号连接（谁有用谁）
         """
-        base = "https://192.168.80.185/vmd/advance_mass"
+        base = "https://192.168.80.185/vmd/advance_mass?opentype=ai"
 
         parts: List[str] = []
         if keyword:
@@ -328,7 +330,7 @@ class Tools:
         if parts:
             params["keyword"] = ",".join(parts)
 
-        return f"{base}?{urlencode(params)}" if params else base
+        return f"{base}&{urlencode(params)}" if params else base
 
     def _build_export_person_word_url(self, id_no: str) -> str:
         """
@@ -336,7 +338,7 @@ class Tools:
         /business/persona/exportWord?idNo=xxxx
         """
         base = self.valves.backend_base_url.rstrip("/")
-        return f"{base}/business/persona/exportWord?{urlencode({'idNo': id_no})}"
+        return f"https://192.168.80.185/prod-api/business/persona/exportWord?{urlencode({'idNo': id_no})}"
 
     # ------------------ AIController API mappings ------------------
 
@@ -459,17 +461,15 @@ class Tools:
 
         return self._wrap_result("/ai/social", raw_params, data, request_url)
 
-    def get_locations(
-        self, id: Optional[str] = None, phonenum: Optional[str] = None
-    ) -> Any:
-        """查询位置列表（/ai/location），至少提供 id/phonenum 之一"""
-        if not id and not phonenum:
+    def get_locations(self, phonenum: Optional[str] = None) -> Any:
+        """查询位置列表（/ai/location），必须提供 phonenum"""
+        if not phonenum:
             return self._need_more_input(
-                "To query locations, please provide: id or phonenum.",
-                ["id", "phonenum"],
+                "To query locations, please provide: phonenum.",
+                ["phonenum"],
             )
 
-        raw_params = {"id": id, "phonenum": phonenum}
+        raw_params = {"phonenum": phonenum}
         data, request_url = self._get("/ai/location", raw_params)
 
         base = "https://192.168.80.185:8443/vthink-ui-v3/#/tracking?opentype=ai"
@@ -576,4 +576,3 @@ class Tools:
 
         # Hide the raw URL behind clickable text
         return f"✅ Export is ready: [Download Word]({export_url})"
-
