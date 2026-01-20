@@ -749,7 +749,13 @@
 
 				reader.readAsDataURL(file['type'] === 'image/heic' ? await convertHeicToJpeg(file) : file);
 			} else {
-				uploadFileHandler(file);
+				const isAudioOrVideo =
+                file.type.startsWith('audio/') ||
+                file.type.startsWith('video/') ||
+                /\.(wav|mp3|ogg|m4a|aac|flac|mp4|mov|webm)$/i.test(file.name);
+
+              // 关键：音视频文件上传时不做自动处理（避免 STT/抽取导致卡住）
+              uploadFileHandler(file, !isAudioOrVideo);
 			}
 		});
 	};
