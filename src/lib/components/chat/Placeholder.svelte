@@ -78,10 +78,17 @@
     padding-top: 30px;">
 	<div class="mb-3 flex justify-center" in:fade={{ duration: 150 }}>
 		<img
-			src="/static/favicon.png"
+			src="/favicon.png"
 			alt="Placeholder"
-			class="size-12 @sm:size-14 rounded-xl"
-			style="width:200px;height:200px;"
+			class="size-12 @sm:size-14 rounded-xl dark:hidden"
+			style="width:220px;height:220px;margin-bottom:50px;"
+			draggable="false"
+		/>
+		<img
+			src="/favicon-dark.png"
+			alt="Placeholder"
+			class="hidden size-12 @sm:size-14 rounded-xl dark:block"
+			style="width:220px;height:220px;margin-bottom:50px;"
 			draggable="false"
 		/>
 	</div>
