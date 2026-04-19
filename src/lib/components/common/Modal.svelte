@@ -56,37 +56,31 @@
 	});
 
 	$: if (show && modalElement) {
-		if (modalElement.parentNode !== document.body) {
-			document.body.appendChild(modalElement);
-		}
-		try {
-			focusTrap = FocusTrap.createFocusTrap(modalElement, {
-				allowOutsideClick: (e) => {
-					return (
-						e.target.closest('[data-sonner-toast]') !== null ||
-						e.target.closest('.modal-content') === null
-					);
-				}
-			});
-			focusTrap?.activate();
-		} catch (error) {
-			console.error('Failed to initialize focus trap', error);
-		}
+		document.body.appendChild(modalElement);
+		focusTrap = FocusTrap.createFocusTrap(modalElement, {
+			allowOutsideClick: (e) => {
+				return (
+					e.target.closest('[data-sonner-toast]') !== null ||
+					e.target.closest('.modal-content') === null
+				);
+			}
+		});
+		focusTrap.activate();
 		window.addEventListener('keydown', handleKeyDown);
 		document.body.style.overflow = 'hidden';
 	} else if (modalElement) {
-		focusTrap?.deactivate();
+		focusTrap.deactivate();
 		window.removeEventListener('keydown', handleKeyDown);
-		if (modalElement.parentNode === document.body) {
-			document.body.removeChild(modalElement);
-		}
+		document.body.removeChild(modalElement);
 		document.body.style.overflow = 'unset';
 	}
 
 	onDestroy(() => {
 		show = false;
-		focusTrap?.deactivate();
-		if (modalElement && modalElement.parentNode === document.body) {
+		if (focusTrap) {
+			focusTrap.deactivate();
+		}
+		if (modalElement) {
 			document.body.removeChild(modalElement);
 		}
 	});
