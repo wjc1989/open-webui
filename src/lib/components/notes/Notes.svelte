@@ -30,14 +30,8 @@
 	$: loadLocale($i18n.languages);
 
 	import { goto } from '$app/navigation';
-	import { WEBUI_NAME, config, user } from '$lib/stores';
-	import {
-		createNewNote,
-		deleteNoteById,
-		getNoteById,
-		getNoteList,
-		searchNotes
-	} from '$lib/apis/notes';
+	import { WEBUI_NAME, config, prompts as _prompts, user } from '$lib/stores';
+	import { createNewNote, deleteNoteById, getNoteList, searchNotes } from '$lib/apis/notes';
 	import { capitalizeFirstLetter, copyToClipboard, getTimeRange } from '$lib/utils';
 	import { downloadPdf, createNoteHandler } from './utils';
 
@@ -66,7 +60,6 @@
 	let total = null;
 
 	let query = '';
-	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
 	let sortKey = null;
 	let displayOption = null;
@@ -79,23 +72,15 @@
 	let allItemsLoaded = false;
 
 	const downloadHandler = async (type) => {
-		// Fetch the full note since the list response may not contain full content
-		const note = await getNoteById(localStorage.token, selectedNote.id).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-
-		if (!note) return;
-
 		if (type === 'txt') {
-			const blob = new Blob([note.data.content.md], { type: 'text/plain' });
-			saveAs(blob, `${note.title}.txt`);
+			const blob = new Blob([selectedNote.data.content.md], { type: 'text/plain' });
+			saveAs(blob, `${selectedNote.title}.txt`);
 		} else if (type === 'md') {
-			const blob = new Blob([note.data.content.md], { type: 'text/markdown' });
-			saveAs(blob, `${note.title}.md`);
+			const blob = new Blob([selectedNote.data.content.md], { type: 'text/markdown' });
+			saveAs(blob, `${selectedNote.title}.md`);
 		} else if (type === 'pdf') {
 			try {
-				await downloadPdf(note);
+				await downloadPdf(selectedNote);
 			} catch (error) {
 				toast.error(`${error}`);
 			}
@@ -143,7 +128,7 @@
 						}
 					},
 					meta: null,
-					access_grants: []
+					access_control: {}
 				}).catch((error) => {
 					toast.error(`${error}`);
 					return null;
@@ -178,16 +163,13 @@
 		await getItemsPage();
 	};
 
-	$: if (query !== undefined) {
-		clearTimeout(searchDebounceTimer);
-		searchDebounceTimer = setTimeout(() => {
-			if (loaded) {
-				init();
-			}
-		}, 300);
-	}
-
-	$: if (loaded && sortKey !== undefined && permission !== undefined && viewOption !== undefined) {
+	$: if (
+		loaded &&
+		query !== undefined &&
+		sortKey !== undefined &&
+		permission !== undefined &&
+		viewOption !== undefined
+	) {
 		init();
 	}
 
@@ -221,9 +203,7 @@
 			}
 
 			if (items) {
-				const existingIds = new Set(items.map((item) => item.id));
-				const newItems = pageItems.filter((item) => !existingIds.has(item.id));
-				items = [...items, ...newItems];
+				items = [...items, ...pageItems];
 			} else {
 				items = pageItems;
 			}
@@ -290,7 +270,7 @@
 		dragged = false;
 	};
 
-	onMount(() => {
+	onMount(async () => {
 		viewOption = localStorage?.noteViewOption ?? null;
 		displayOption = localStorage?.noteDisplayOption ?? null;
 
@@ -300,16 +280,17 @@
 		dropzoneElement?.addEventListener('dragover', onDragOver);
 		dropzoneElement?.addEventListener('drop', onDrop);
 		dropzoneElement?.addEventListener('dragleave', onDragLeave);
+	});
 
-		return () => {
-			clearTimeout(searchDebounceTimer);
+	onDestroy(() => {
+		console.log('destroy');
+		const dropzoneElement = document.getElementById('notes-container');
 
-			if (dropzoneElement) {
-				dropzoneElement?.removeEventListener('dragover', onDragOver);
-				dropzoneElement?.removeEventListener('drop', onDrop);
-				dropzoneElement?.removeEventListener('dragleave', onDragLeave);
-			}
-		};
+		if (dropzoneElement) {
+			dropzoneElement?.removeEventListener('dragover', onDragOver);
+			dropzoneElement?.removeEventListener('drop', onDrop);
+			dropzoneElement?.removeEventListener('dragleave', onDragLeave);
+		}
 	});
 </script>
 
@@ -411,7 +392,7 @@
 					>
 						<DropdownOptions
 							align="start"
-							className="flex shrink-0 items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl placeholder-gray-400 outline-hidden focus:outline-hidden"
+							className="flex w-full items-center gap-2 truncate px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl  placeholder-gray-400 outline-hidden focus:outline-hidden"
 							bind:value={viewOption}
 							items={[
 								{ value: null, label: $i18n.t('All') },
@@ -440,7 +421,7 @@
 					</div>
 				</div>
 
-				<div class="shrink-0">
+				<div>
 					<DropdownOptions
 						align="start"
 						bind:value={displayOption}

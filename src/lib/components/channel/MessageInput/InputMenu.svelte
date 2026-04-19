@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { DropdownMenu } from 'bits-ui';
+	import { flyAndScale } from '$lib/utils/transitions';
 	import { getContext, onMount, tick } from 'svelte';
 
 	import { config, user, tools as _tools, mobile } from '$lib/stores';
@@ -43,30 +45,33 @@
 	</Tooltip>
 
 	<div slot="content">
-		<div
-			class="w-[200px] rounded-2xl px-1 py-1 border border-gray-100 dark:border-gray-800 z-999 bg-white dark:bg-gray-850 dark:text-white shadow-lg transition"
+		<DropdownMenu.Content
+			class="w-full max-w-[200px] rounded-2xl px-1 py-1  border border-gray-100  dark:border-gray-800 z-999 bg-white dark:bg-gray-850 dark:text-white shadow-lg transition"
+			sideOffset={4}
+			alignOffset={-6}
+			side="bottom"
+			align="start"
+			transition={flyAndScale}
 		>
-			<button
-				class="select-none flex w-full gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl"
-				type="button"
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl"
 				on:click={() => {
 					uploadFilesHandler();
 				}}
 			>
 				<Clip />
 				<div class="line-clamp-1">{$i18n.t('Upload Files')}</div>
-			</button>
+			</DropdownMenu.Item>
 
-			<button
-				class="select-none flex w-full gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl"
-				type="button"
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50  rounded-xl"
 				on:click={() => {
 					screenCaptureHandler();
 				}}
 			>
 				<Camera />
 				<div class=" line-clamp-1">{$i18n.t('Capture')}</div>
-			</button>
-		</div>
+			</DropdownMenu.Item>
+		</DropdownMenu.Content>
 	</div>
 </Dropdown>

@@ -260,7 +260,7 @@
 										crossorigin="anonymous"
 										src="{WEBUI_BASE_URL}/static/favicon.png"
 										class="size-24 rounded-full"
-										alt="{$WEBUI_NAME} logo"
+										alt=""
 									/>
 								</div>
 							{/if}
@@ -359,9 +359,7 @@
 												placeholder={$i18n.t('Enter Your Password')}
 												autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
 												name="password"
-												screenReader={true}
 												required
-												aria-required="true"
 											/>
 										</div>
 
@@ -457,7 +455,6 @@
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 48 48"
 												class="size-6 mr-3"
-												aria-hidden="true"
 											>
 												<path
 													fill="#EA4335"
@@ -487,7 +484,6 @@
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 21 21"
 												class="size-6 mr-3"
-												aria-hidden="true"
 											>
 												<rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect
 													x="1"
@@ -518,7 +514,6 @@
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 24 24"
 												class="size-6 mr-3"
-												aria-hidden="true"
 											>
 												<path
 													fill="currentColor"
@@ -542,7 +537,6 @@
 												stroke-width="1.5"
 												stroke="currentColor"
 												class="size-6 mr-3"
-												aria-hidden="true"
 											>
 												<path
 													stroke-linecap="round"

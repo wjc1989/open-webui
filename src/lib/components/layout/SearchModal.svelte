@@ -163,9 +163,7 @@
 		allChatsLoaded = newChatList.length === 0;
 
 		if (newChatList.length > 0) {
-			const existingIds = new Set(chatList.map((c) => c.id));
-			const uniqueNewChats = newChatList.filter((c) => !existingIds.has(c.id));
-			chatList = [...chatList, ...uniqueNewChats];
+			chatList = [...chatList, ...newChatList];
 		}
 
 		chatListLoading = false;
@@ -427,7 +425,7 @@
 			</div>
 			<div
 				id="chat-preview"
-				class="hidden md:flex md:flex-1 w-full overflow-y-auto h-96 md:h-[40rem] scrollbar-hidden @container"
+				class="hidden md:flex md:flex-1 w-full overflow-y-auto h-96 md:h-[40rem] scrollbar-hidden"
 			>
 				{#if messages === null}
 					<div

@@ -44,7 +44,7 @@
 	let modelIds = [];
 	let filterMode = 'include';
 
-	let accessGrants = [];
+	let accessControl = {};
 
 	let imageInputElement;
 	let loading = false;
@@ -83,7 +83,7 @@
 				description: description || null,
 				model_ids: modelIds.length > 0 ? modelIds : null,
 				filter_mode: modelIds.length > 0 ? (filterMode ? filterMode : null) : null,
-				access_grants: accessGrants
+				access_control: accessControl
 			}
 		};
 
@@ -107,7 +107,7 @@
 			description = model.meta.description;
 			modelIds = model.meta.model_ids || [];
 			filterMode = model.meta?.filter_mode ?? 'include';
-			accessGrants = model.meta.access_grants ?? [];
+			accessControl = 'access_control' in model.meta ? model.meta.access_control : {};
 		}
 	};
 
@@ -231,7 +231,7 @@
 								<img
 									src={profileImageUrl}
 									class="size-16 rounded-full object-cover shrink-0"
-									alt={$i18n.t('Profile')}
+									alt="Profile"
 								/>
 
 								<div
@@ -293,7 +293,7 @@
 						<hr class=" border-gray-100 dark:border-gray-700/10 my-2.5 w-full" />
 
 						<div class="my-2">
-							<AccessControl bind:accessGrants />
+							<AccessControl bind:accessControl />
 						</div>
 
 						<hr class=" border-gray-100 dark:border-gray-700/10 my-2.5 w-full" />
@@ -350,7 +350,7 @@
 
 						<div class="flex items-center">
 							<select
-								class="w-full py-1 text-sm rounded-lg bg-transparent {selectedModelId
+								class="dark:bg-gray-900 w-full py-1 text-sm rounded-lg bg-transparent {selectedModelId
 									? ''
 									: 'text-gray-500'} placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-hidden"
 								bind:value={selectedModelId}

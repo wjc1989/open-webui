@@ -14,6 +14,7 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Textarea from '$lib/components/common/Textarea.svelte';
+	import { getUserById } from '$lib/apis/users';
 	import User from '$lib/components/icons/User.svelte';
 	import UserProfileImage from './Account/UserProfileImage.svelte';
 
@@ -150,7 +151,6 @@
 									class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
 									type="text"
 									bind:value={name}
-									aria-label={$i18n.t('Name')}
 									required
 									placeholder={$i18n.t('Enter your name')}
 								/>
@@ -165,7 +165,6 @@
 									className="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
 									minSize={60}
 									bind:value={bio}
-									ariaLabel={$i18n.t('Bio')}
 									placeholder={$i18n.t('Share your background and interests')}
 								/>
 							</div>
@@ -176,9 +175,8 @@
 
 							<div class="flex-1">
 								<select
-									class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
+									class="dark:bg-gray-900 w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
 									bind:value={_gender}
-									aria-label={$i18n.t('Gender')}
 									on:change={(e) => {
 										console.log(_gender);
 
@@ -202,7 +200,6 @@
 									class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden mt-1"
 									type="text"
 									required
-									aria-label={$i18n.t('Custom Gender')}
 									placeholder={$i18n.t('Enter your gender')}
 									bind:value={gender}
 								/>
@@ -216,7 +213,6 @@
 								<input
 									class="w-full text-sm dark:text-gray-300 dark:placeholder:text-gray-300 bg-transparent outline-hidden"
 									type="date"
-									aria-label={$i18n.t('Birth Date')}
 									bind:value={dateOfBirth}
 									required
 								/>
@@ -237,7 +233,6 @@
 							class="w-full text-sm outline-hidden"
 							type="url"
 							placeholder={$i18n.t('Enter your webhook URL')}
-							aria-label={$i18n.t('Notification Webhook')}
 							bind:value={webhookUrl}
 							required
 						/>
@@ -279,7 +274,6 @@
 
 								<button
 									class="ml-1.5 px-1.5 py-1 dark:hover:bg-gray-850 transition rounded-lg"
-									aria-label={$i18n.t('Copy Token')}
 									on:click={() => {
 										copyToClipboard(localStorage.token);
 										JWTTokenCopied = true;
@@ -338,7 +332,6 @@
 
 									<button
 										class="ml-1.5 px-1.5 py-1 dark:hover:bg-gray-850 transition rounded-lg"
-										aria-label={$i18n.t('Copy API Key')}
 										on:click={() => {
 											copyToClipboard(APIKey);
 											APIKeyCopied = true;
@@ -384,7 +377,6 @@
 									<Tooltip content={$i18n.t('Create new key')}>
 										<button
 											class=" px-1.5 py-1 dark:hover:bg-gray-850transition rounded-lg"
-											aria-label={$i18n.t('Create new key')}
 											on:click={() => {
 												createAPIKeyHandler();
 											}}

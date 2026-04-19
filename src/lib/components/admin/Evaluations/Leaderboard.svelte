@@ -180,16 +180,9 @@
 								<img
 									src="{WEBUI_API_BASE_URL}/models/model/profile/image?id={model.id}"
 									alt={model.name}
-									class="size-5 rounded-full object-cover shrink-0"
-									on:error={(e) => {
-										e.target.src = '/favicon.png';
-									}}
+									class="size-5 rounded-full object-cover"
 								/>
-								<Tooltip content={`${model.name} (${model.id})`} placement="top-start">
-									<span class="font-medium text-gray-800 dark:text-gray-200 line-clamp-1"
-										>{model.name}</span
-									>
-								</Tooltip>
+								<span class="font-medium text-gray-800 dark:text-gray-200">{model.name}</span>
 							</div>
 						</td>
 						<td class="px-3 py-1.5 text-right font-medium text-gray-900 dark:text-white">

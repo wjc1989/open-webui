@@ -4,7 +4,6 @@
 	import { getModelHistory } from '$lib/apis/evaluations';
 	import ModelActivityChart from './ModelActivityChart.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
-	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	export let show = false;
 	export let model = null;
@@ -61,11 +60,9 @@
 <Modal size="md" bind:show>
 	{#if model}
 		<div class="flex justify-between dark:text-gray-300 px-5 pt-4 pb-2">
-			<Tooltip content={`${model.name} (${model.id})`} placement="top-start">
-				<div class="text-lg font-medium self-center line-clamp-1">
-					{model.name}
-				</div>
-			</Tooltip>
+			<div class="text-lg font-medium self-center">
+				{model.name}
+			</div>
 			<button class="self-center" on:click={close} aria-label="Close">
 				<XMark className={'size-5'} />
 			</button>

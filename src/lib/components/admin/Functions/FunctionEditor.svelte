@@ -4,7 +4,6 @@
 
 	const i18n = getContext('i18n');
 
-	import { nameToId } from '$lib/utils';
 	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
@@ -37,7 +36,7 @@
 	};
 
 	$: if (name && !edit && !clone) {
-		id = nameToId(name);
+		id = name.replace(/\s+/g, '_').toLowerCase();
 	}
 
 	let codeEditor;
@@ -277,11 +276,11 @@ class Pipe:
 			content = _content;
 			await tick();
 
-			if (!res) {
-				console.warn('Code formatting failed or was skipped, saving unformatted code');
-			}
+			if (res) {
+				console.info('Code formatted successfully');
 
-			saveHandler();
+				saveHandler();
+			}
 		}
 	};
 </script>

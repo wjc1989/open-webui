@@ -14,11 +14,8 @@ const createI18nStore = (i18n: i18nType) => {
 		i18nWritable.set(i18n);
 	});
 	i18n.on('added', () => i18nWritable.set(i18n));
-	i18n.on('languageChanged', (lang) => {
+	i18n.on('languageChanged', () => {
 		i18nWritable.set(i18n);
-		if (typeof document !== 'undefined') {
-			document.documentElement.setAttribute('lang', lang);
-		}
 	});
 	return i18nWritable;
 };
@@ -61,7 +58,6 @@ export const initI18n = (defaultLocale?: string | undefined) => {
 				lookupLocalStorage: 'locale'
 			},
 			fallbackLng: {
-				fr: ['fr-FR'],
 				default: fallbackDefaultLocale
 			},
 			ns: 'translation',
@@ -70,6 +66,9 @@ export const initI18n = (defaultLocale?: string | undefined) => {
 				escapeValue: false // not needed for svelte as it escapes by default
 			}
 		});
+
+	const lang = i18next?.language || defaultLocale || 'en-US';
+	document.documentElement.setAttribute('lang', lang);
 };
 
 const i18n = createI18nStore(i18next);

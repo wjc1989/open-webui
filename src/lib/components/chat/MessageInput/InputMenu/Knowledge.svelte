@@ -78,9 +78,7 @@
 			}
 
 			if (selectedFileItems) {
-				const existingIds = new Set(selectedFileItems.map((item) => item.id));
-				const newItems = pageItems.filter((item) => !existingIds.has(item.id));
-				selectedFileItems = [...selectedFileItems, ...newItems];
+				selectedFileItems = [...selectedFileItems, ...pageItems];
 			} else {
 				selectedFileItems = pageItems;
 			}
@@ -139,9 +137,7 @@
 			}
 
 			if (items) {
-				const existingIds = new Set(items.map((item) => item.id));
-				const newItems = pageItems.filter((item) => !existingIds.has(item.id));
-				items = [...items, ...newItems];
+				items = [...items, ...pageItems];
 			} else {
 				items = pageItems;
 			}
@@ -190,16 +186,12 @@
 						}}
 						data-selected={idx === selectedIdx}
 					>
-						<div class="w-full text-left text-black dark:text-gray-100 flex items-center gap-1">
+						<div class="  text-black dark:text-gray-100 flex items-center gap-1 shrink-0">
 							<Tooltip content={$i18n.t('Collection')} placement="top">
 								<Database className="size-4" />
 							</Tooltip>
 
-							<Tooltip
-								content={item.description || decodeString(item?.name)}
-								placement="top-start"
-								className="flex flex-1 min-w-0"
-							>
+							<Tooltip content={item.description || decodeString(item?.name)} placement="top-start">
 								<div class="line-clamp-1 flex-1 text-sm">
 									{decodeString(item?.name)}
 								</div>

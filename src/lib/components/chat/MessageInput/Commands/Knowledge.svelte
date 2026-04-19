@@ -25,7 +25,6 @@
 
 	let selectedIdx = 0;
 	let items = [];
-	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
 	export let filteredItems = [];
 	$: filteredItems = [
@@ -70,16 +69,9 @@
 
 	$: items = [...folderItems, ...knowledgeItems, ...fileItems];
 
-	$: if (query !== undefined) {
-		clearTimeout(searchDebounceTimer);
-		searchDebounceTimer = setTimeout(() => {
-			getItems();
-		}, 200);
+	$: if (query !== null) {
+		getItems();
 	}
-
-	onDestroy(() => {
-		clearTimeout(searchDebounceTimer);
-	});
 
 	const getItems = () => {
 		getFolderItems();
@@ -136,6 +128,20 @@
 		}
 
 		await tick();
+	});
+
+	const onKeyDown = (e) => {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			select();
+		}
+	};
+	onMount(() => {
+		window.addEventListener('keydown', onKeyDown);
+	});
+
+	onDestroy(() => {
+		window.removeEventListener('keydown', onKeyDown);
 	});
 </script>
 
@@ -206,7 +212,7 @@
 		<button
 			class="px-2 py-1 rounded-xl w-full text-left bg-gray-50 dark:bg-gray-800 dark:text-gray-100 selected-command-option-button"
 			type="button"
-			data-selected={selectedIdx === filteredItems.findIndex((i) => i.type === 'youtube')}
+			data-selected={true}
 			on:click={() => {
 				if (isValidHttpUrl(query)) {
 					onSelect({
@@ -234,7 +240,7 @@
 		<button
 			class="px-2 py-1 rounded-xl w-full text-left bg-gray-50 dark:bg-gray-800 dark:text-gray-100 selected-command-option-button"
 			type="button"
-			data-selected={selectedIdx === filteredItems.findIndex((i) => i.type === 'web')}
+			data-selected={true}
 			on:click={() => {
 				if (isValidHttpUrl(query)) {
 					onSelect({

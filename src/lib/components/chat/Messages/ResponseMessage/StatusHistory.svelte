@@ -21,10 +21,7 @@
 		status = history.at(-1);
 	}
 
-	$: if (
-		statusHistory.length !== history.length ||
-		JSON.stringify(statusHistory) !== JSON.stringify(history)
-	) {
+	$: if (JSON.stringify(statusHistory) !== JSON.stringify(history)) {
 		history = statusHistory;
 	}
 </script>
@@ -34,8 +31,6 @@
 		<div class="text-sm flex flex-col w-full">
 			<button
 				class="w-full"
-				aria-label={$i18n.t('Toggle status history')}
-				aria-expanded={showHistory}
 				on:click={() => {
 					showHistory = !showHistory;
 				}}

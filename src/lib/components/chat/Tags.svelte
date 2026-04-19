@@ -23,7 +23,6 @@
 	import { toast } from 'svelte-sonner';
 
 	export let chatId = '';
-	export let disabled = false;
 	let tags = [];
 
 	const getTags = async () => {
@@ -74,7 +73,6 @@
 
 <Tags
 	{tags}
-	{disabled}
 	suggestionTags={$_tags ?? []}
 	on:delete={(e) => {
 		deleteTag(e.detail);

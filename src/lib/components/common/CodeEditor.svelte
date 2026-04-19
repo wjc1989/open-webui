@@ -1,6 +1,4 @@
 <script lang="ts">
-	import '$lib/utils/codemirror';
-
 	import { basicSetup, EditorView } from 'codemirror';
 	import { keymap, placeholder } from '@codemirror/view';
 	import { Compartment, EditorState } from '@codemirror/state';
@@ -8,7 +6,7 @@
 	import { acceptCompletion } from '@codemirror/autocomplete';
 	import { indentWithTab } from '@codemirror/commands';
 
-	import { indentUnit } from '@codemirror/language';
+	import { indentUnit, LanguageDescription } from '@codemirror/language';
 	import { languages } from '@codemirror/language-data';
 
 	import { oneDark } from '@codemirror/theme-one-dark';
@@ -77,15 +75,34 @@
 	export let id = '';
 	export let lang = '';
 
-	let codeEditor: EditorView | null = null;
+	let codeEditor;
 
 	export const focus = () => {
-		codeEditor?.focus();
+		codeEditor.focus();
 	};
 
 	let isDarkMode = false;
 	let editorTheme = new Compartment();
 	let editorLanguage = new Compartment();
+
+	languages.push(
+		LanguageDescription.of({
+			name: 'HCL',
+			extensions: ['hcl', 'tf'],
+			load() {
+				return import('codemirror-lang-hcl').then((m) => m.hcl());
+			}
+		})
+	);
+	languages.push(
+		LanguageDescription.of({
+			name: 'Elixir',
+			extensions: ['ex', 'exs'],
+			load() {
+				return import('codemirror-lang-elixir').then((m) => m.elixir());
+			}
+		})
+	);
 
 	const getLang = async () => {
 		const language = languages.find((l) => l.alias.includes(lang));
@@ -303,11 +320,6 @@ print("${endTag}")
 		return () => {
 			observer.disconnect();
 			document.removeEventListener('keydown', keydownHandler);
-			// Must destroy EditorView so CodeMirror releases internal DOMObserver and DOM refs
-			if (codeEditor) {
-				codeEditor.destroy();
-				codeEditor = null;
-			}
 		};
 	});
 

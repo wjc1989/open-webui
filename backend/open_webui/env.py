@@ -127,7 +127,7 @@ SRC_LOG_LEVELS = {}  # Legacy variable, do not remove
 
 WEBUI_NAME = os.environ.get('WEBUI_NAME', 'Alfath GPT')
 
-WEBUI_FAVICON_URL = 'https://openwebui.com/favicon.png'
+WEBUI_FAVICON_URL = 'https://192.168.80.185:8444/favicon.png'
 
 TRUSTED_SIGNATURE_KEY = os.environ.get('TRUSTED_SIGNATURE_KEY', '')
 

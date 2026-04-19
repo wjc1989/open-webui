@@ -58,7 +58,6 @@
 	let insertFollowUpPrompt = false;
 
 	let regenerateMenu = true;
-	let enableMessageQueue = true;
 
 	let landingPageMode = '';
 	let chatBubble = true;
@@ -70,7 +69,6 @@
 	let chatFadeStreamingText = true;
 	let collapseCodeBlocks = false;
 	let expandDetails = false;
-	let renderMarkdownInPreviews = true;
 	let showChatTitleInTab = true;
 
 	let showFloatingActionButtons = true;
@@ -226,14 +224,12 @@
 		insertFollowUpPrompt = $settings?.insertFollowUpPrompt ?? false;
 
 		regenerateMenu = $settings?.regenerateMenu ?? true;
-		enableMessageQueue = $settings?.enableMessageQueue ?? true;
 
 		largeTextAsFile = $settings?.largeTextAsFile ?? false;
 		copyFormatted = $settings?.copyFormatted ?? false;
 
 		collapseCodeBlocks = $settings?.collapseCodeBlocks ?? false;
 		expandDetails = $settings?.expandDetails ?? false;
-		renderMarkdownInPreviews = $settings?.renderMarkdownInPreviews ?? true;
 
 		landingPageMode = $settings?.landingPageMode ?? '';
 		chatBubble = $settings?.chatBubble ?? true;
@@ -590,25 +586,6 @@
 
 			<div>
 				<div class=" py-0.5 flex w-full justify-between">
-					<div id="enable-message-queue-label" class=" self-center text-xs">
-						{$i18n.t('Enable Message Queue')}
-					</div>
-
-					<div class="flex items-center gap-2 p-1">
-						<Switch
-							ariaLabelledbyId="enable-message-queue-label"
-							tooltip={true}
-							bind:state={enableMessageQueue}
-							on:change={() => {
-								saveSettings({ enableMessageQueue });
-							}}
-						/>
-					</div>
-				</div>
-			</div>
-
-			<div>
-				<div class=" py-0.5 flex w-full justify-between">
 					<div id="chat-direction-label" class=" self-center text-xs">
 						{$i18n.t('Chat direction')}
 					</div>
@@ -960,25 +937,6 @@
 							bind:state={expandDetails}
 							on:change={() => {
 								saveSettings({ expandDetails });
-							}}
-						/>
-					</div>
-				</div>
-			</div>
-
-			<div>
-				<div class=" py-0.5 flex w-full justify-between">
-					<div id="render-markdown-in-previews-label" class=" self-center text-xs">
-						{$i18n.t('Render Markdown in Previews')}
-					</div>
-
-					<div class="flex items-center gap-2 p-1">
-						<Switch
-							ariaLabelledbyId="render-markdown-in-previews-label"
-							tooltip={true}
-							bind:state={renderMarkdownInPreviews}
-							on:change={() => {
-								saveSettings({ renderMarkdownInPreviews });
 							}}
 						/>
 					</div>

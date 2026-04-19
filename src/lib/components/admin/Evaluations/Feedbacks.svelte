@@ -302,13 +302,9 @@
 								<div class="flex flex-col items-start gap-0.5 h-full">
 									<div class="flex flex-col h-full">
 										{#if feedback.data?.sibling_model_ids}
-											<Tooltip content={feedback.data?.model_id} placement="top-start">
-												<div
-													class="font-medium text-gray-600 dark:text-gray-400 flex-1 line-clamp-1"
-												>
-													{feedback.data?.model_id}
-												</div>
-											</Tooltip>
+											<div class="font-medium text-gray-600 dark:text-gray-400 flex-1">
+												{feedback.data?.model_id}
+											</div>
 
 											<Tooltip content={feedback.data.sibling_model_ids.join(', ')}>
 												<div class=" text-[0.65rem] text-gray-600 dark:text-gray-400 line-clamp-1">
@@ -324,13 +320,11 @@
 												</div>
 											</Tooltip>
 										{:else}
-											<Tooltip content={feedback.data?.model_id} placement="top-start">
-												<div
-													class="text-sm font-medium text-gray-600 dark:text-gray-400 flex-1 py-1.5 line-clamp-1"
-												>
-													{feedback.data?.model_id}
-												</div>
-											</Tooltip>
+											<div
+												class=" text-sm font-medium text-gray-600 dark:text-gray-400 flex-1 py-1.5"
+											>
+												{feedback.data?.model_id}
+											</div>
 										{/if}
 									</div>
 								</div>

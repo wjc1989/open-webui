@@ -217,11 +217,7 @@ export const imageGenerations = async (token: string = '', prompt: string) => {
 		.catch((err) => {
 			console.error(err);
 			if ('detail' in err) {
-				if (Array.isArray(err.detail)) {
-					error = err.detail.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join(', ');
-				} else {
-					error = err.detail;
-				}
+				error = err.detail;
 			} else {
 				error = 'Server connection failed';
 			}
@@ -237,16 +233,12 @@ export const imageGenerations = async (token: string = '', prompt: string) => {
 
 export const imageEdits = async (
 	token: string = '',
-	images: string | string[],
-	prompt: string,
-	model?: string,
-	size?: string,
-	n?: number,
-	background?: string
+	sourceImages: string | string[],
+	prompt: string
 ) => {
 	let error = null;
 
-	const res = await fetch(`${IMAGES_API_BASE_URL}/edit`, {
+	const res = await fetch(`${IMAGES_API_BASE_URL}/edits`, {
 		method: 'POST',
 		headers: {
 			Accept: 'application/json',
@@ -254,14 +246,8 @@ export const imageEdits = async (
 			...(token && { authorization: `Bearer ${token}` })
 		},
 		body: JSON.stringify({
-			form_data: {
-				image: images,
-				prompt,
-				...(model && { model }),
-				...(size && { size }),
-				...(n && { n }),
-				...(background && { background })
-			}
+			source_images: sourceImages,
+			prompt: prompt
 		})
 	})
 		.then(async (res) => {
@@ -271,11 +257,7 @@ export const imageEdits = async (
 		.catch((err) => {
 			console.error(err);
 			if ('detail' in err) {
-				if (Array.isArray(err.detail)) {
-					error = err.detail.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join(', ');
-				} else {
-					error = err.detail;
-				}
+				error = err.detail;
 			} else {
 				error = 'Server connection failed';
 			}

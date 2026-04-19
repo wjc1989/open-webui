@@ -40,9 +40,9 @@
 </script>
 
 {#if $embed}
-	<div class="h-full w-full flex flex-col">
+	<div class="h-full w-full">
 		<div
-			class="pointer-events-auto z-20 flex justify-between items-center py-3 px-2 font-primar text-gray-900 dark:text-white flex-shrink-0"
+			class="pointer-events-auto z-20 flex justify-between items-center py-3 px-2 font-primar text-gray-900 dark:text-white"
 		>
 			<div class="flex-1 flex items-center justify-between pl-2">
 				<a
@@ -57,7 +57,6 @@
 
 			<button
 				class="self-center pointer-events-auto p-1 rounded-full bg-white dark:bg-gray-850"
-				aria-label="Close embed"
 				on:click={() => {
 					showControls.set(false);
 					showEmbeds.set(false);
@@ -68,7 +67,7 @@
 			</button>
 		</div>
 
-		<div class="w-full flex-1 min-h-0 relative">
+		<div class=" w-full h-full relative">
 			{#if overlay}
 				<div class=" absolute top-0 left-0 right-0 bottom-0 z-10"></div>
 			{/if}

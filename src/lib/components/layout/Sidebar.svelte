@@ -26,8 +26,7 @@
 		models,
 		selectedFolder,
 		WEBUI_NAME,
-		sidebarWidth,
-		activeChatIds
+		sidebarWidth
 	} from '$lib/stores';
 	import { onMount, getContext, tick, onDestroy } from 'svelte';
 
@@ -43,7 +42,6 @@
 		importChats
 	} from '$lib/apis/chats';
 	import { createNewFolder, getFolders, updateFolderParentIdById } from '$lib/apis/folders';
-	import { checkActiveChats } from '$lib/apis/tasks';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
 	import ArchivedChatsModal from './ArchivedChatsModal.svelte';
@@ -142,20 +140,19 @@
 		}
 	};
 
-	const createFolder = async ({ name, data, parent_id }) => {
+	const createFolder = async ({ name, data }) => {
 		name = name?.trim();
 		if (!name) {
 			toast.error($i18n.t('Folder name cannot be empty.'));
 			return;
 		}
 
-		// Check for duplicate names in the same parent
-		const siblings = Object.values(folders).filter((folder) => folder.parent_id === parent_id);
-		if (siblings.find((folder) => folder.name.toLowerCase() === name.toLowerCase())) {
+		const rootFolders = Object.values(folders).filter((folder) => folder.parent_id === null);
+		if (rootFolders.find((folder) => folder.name.toLowerCase() === name.toLowerCase())) {
 			// If a folder with the same name already exists, append a number to the name
 			let i = 1;
 			while (
-				siblings.find((folder) => folder.name.toLowerCase() === `${name} ${i}`.toLowerCase())
+				rootFolders.find((folder) => folder.name.toLowerCase() === `${name} ${i}`.toLowerCase())
 			) {
 				i++;
 			}
@@ -167,10 +164,9 @@
 		const tempId = uuidv4();
 		folders = {
 			...folders,
-			[tempId]: {
+			tempId: {
 				id: tempId,
 				name: name,
-				parent_id: parent_id,
 				created_at: Date.now(),
 				updated_at: Date.now()
 			}
@@ -178,8 +174,7 @@
 
 		const res = await createNewFolder(localStorage.token, {
 			name,
-			data,
-			parent_id
+			data
 		}).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -249,9 +244,7 @@
 
 		// once the bottom of the list has been reached (no results) there is no need to continue querying
 		allChatsLoaded = newChatList.length === 0;
-		const existingIds = new Set(($chats ?? []).map((c) => c.id));
-		const uniqueNewChats = newChatList.filter((c) => !existingIds.has(c.id));
-		await chats.set([...($chats ? $chats : []), ...uniqueNewChats]);
+		await chats.set([...($chats ? $chats : []), ...newChatList]);
 
 		chatListLoading = false;
 	};
@@ -419,7 +412,9 @@
 		document.documentElement.style.setProperty('--sidebar-width', `${newSidebarWidth}px`);
 	};
 
-	onMount(() => {
+	let unsubscribers = [];
+
+	onMount(async () => {
 		try {
 			const width = Number(localStorage.getItem('sidebarWidth'));
 			if (!Number.isNaN(width) && width >= MIN_WIDTH && width <= MAX_WIDTH) {
@@ -432,9 +427,9 @@
 			document.documentElement.style.setProperty('--sidebar-width', `${w}px`);
 		});
 
-		showSidebar.set(!$mobile ? localStorage.sidebar === 'true' : false);
+		await showSidebar.set(!$mobile ? localStorage.sidebar === 'true' : false);
 
-		const unsubscribers = [
+		unsubscribers = [
 			mobile.subscribe((value) => {
 				if ($showSidebar && value) {
 					showSidebar.set(false);
@@ -474,17 +469,6 @@
 						await initChannels();
 					}
 					await initChatList();
-
-					// Check which chats have active tasks
-					const allChatIds = [...$chats.map((c) => c.id), ...$pinnedChats.map((c) => c.id)];
-					if (allChatIds.length > 0) {
-						try {
-							const res = await checkActiveChats(localStorage.token, allChatIds);
-							activeChatIds.set(new Set(res.active_chat_ids || []));
-						} catch (e) {
-							console.debug('Failed to check active chats:', e);
-						}
-					}
 				}
 			}),
 			settings.subscribe((value) => {
@@ -505,56 +489,36 @@
 		window.addEventListener('blur', onBlur);
 
 		const dropZone = document.getElementById('sidebar');
-		if (dropZone) {
-			dropZone.addEventListener('dragover', onDragOver);
-			dropZone.addEventListener('drop', onDrop);
-			dropZone.addEventListener('dragleave', onDragLeave);
-		}
 
-		const socketInstance = $socket;
-		socketInstance?.on('events', chatActiveEventHandler);
-
-		return () => {
-			unsubscribers.forEach((unsubscriber) => unsubscriber());
-
-			window.removeEventListener('keydown', onKeyDown);
-			window.removeEventListener('keyup', onKeyUp);
-
-			window.removeEventListener('touchstart', onTouchStart);
-			window.removeEventListener('touchend', onTouchEnd);
-
-			window.removeEventListener('focus', onFocus);
-			window.removeEventListener('blur', onBlur);
-
-			if (dropZone) {
-				dropZone.removeEventListener('dragover', onDragOver);
-				dropZone.removeEventListener('drop', onDrop);
-				dropZone.removeEventListener('dragleave', onDragLeave);
-			}
-
-			socketInstance?.off('events', chatActiveEventHandler);
-		};
+		dropZone?.addEventListener('dragover', onDragOver);
+		dropZone?.addEventListener('drop', onDrop);
+		dropZone?.addEventListener('dragleave', onDragLeave);
 	});
 
-	// Handler for chat:active events (defined outside onMount for proper cleanup)
-	const chatActiveEventHandler = (event: {
-		chat_id: string;
-		message_id: string;
-		data: { type: string; data: any };
-	}) => {
-		if (event.data?.type === 'chat:active') {
-			const { active } = event.data.data;
-			activeChatIds.update((ids) => {
-				const newSet = new Set(ids);
-				if (active) {
-					newSet.add(event.chat_id);
-				} else {
-					newSet.delete(event.chat_id);
+	onDestroy(() => {
+		if (unsubscribers && unsubscribers.length > 0) {
+			unsubscribers.forEach((unsubscriber) => {
+				if (unsubscriber) {
+					unsubscriber();
 				}
-				return newSet;
 			});
 		}
-	};
+
+		window.removeEventListener('keydown', onKeyDown);
+		window.removeEventListener('keyup', onKeyUp);
+
+		window.removeEventListener('touchstart', onTouchStart);
+		window.removeEventListener('touchend', onTouchEnd);
+
+		window.removeEventListener('focus', onFocus);
+		window.removeEventListener('blur', onBlur);
+
+		const dropZone = document.getElementById('sidebar');
+
+		dropZone?.removeEventListener('dragover', onDragOver);
+		dropZone?.removeEventListener('drop', onDrop);
+		dropZone?.removeEventListener('dragleave', onDragLeave);
+	});
 
 	const newChatHandler = async () => {
 		selectedChatId = null;
@@ -592,18 +556,11 @@
 	onUpdate={async () => {
 		await initChatList();
 	}}
-	onDelete={(id) => {
-		if ($chatId === id) {
-			goto('/');
-			chatId.set('');
-		}
-	}}
 />
 
 <ChannelModal
 	bind:show={showCreateChannel}
-	onSubmit={async (payload: any) => {
-		let { type, name, is_private, access_grants, group_ids, user_ids } = payload ?? {};
+	onSubmit={async ({ type, name, is_private, access_control, group_ids, user_ids }) => {
 		name = name?.trim();
 
 		if (type === 'dm') {
@@ -622,7 +579,7 @@
 			type: type,
 			name: name,
 			is_private: is_private,
-			access_grants: access_grants,
+			access_control: access_control,
 			group_ids: group_ids,
 			user_ids: user_ids
 		}).catch((error) => {
@@ -858,6 +815,9 @@
 									{#if $config?.features?.enable_user_status}
 										<div class="absolute -bottom-0.5 -right-0.5">
 											<span class="relative flex size-2.5">
+												<span
+													class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"
+												></span>
 												<span
 													class="relative inline-flex size-2.5 rounded-full {true
 														? 'bg-green-500'
@@ -1287,7 +1247,6 @@
 												className=""
 												id={chat.id}
 												title={chat.title}
-												createdAt={chat.created_at}
 												{shiftKey}
 												selected={selectedChatId === chat.id}
 												on:select={() => {
@@ -1348,7 +1307,6 @@
 										className=""
 										id={chat.id}
 										title={chat.title}
-										createdAt={chat.created_at}
 										{shiftKey}
 										selected={selectedChatId === chat.id}
 										on:select={() => {
@@ -1406,7 +1364,6 @@
 							role={$user?.role}
 							profile={$config?.features?.enable_user_status ?? true}
 							showActiveUsers={false}
-							className="w-[calc(var(--sidebar-width)-1rem)]"
 							on:show={(e) => {
 								if (e.detail === 'archived-chat') {
 									showArchivedChats.set(true);
@@ -1427,6 +1384,9 @@
 									{#if $config?.features?.enable_user_status}
 										<div class="absolute -bottom-0.5 -right-0.5">
 											<span class="relative flex size-2.5">
+												<span
+													class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"
+												></span>
 												<span
 													class="relative inline-flex size-2.5 rounded-full {true
 														? 'bg-green-500'

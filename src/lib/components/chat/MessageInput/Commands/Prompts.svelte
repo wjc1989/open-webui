@@ -3,44 +3,22 @@
 	import { tick, getContext, onMount, onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
-	import { getPrompts } from '$lib/apis/prompts';
-
 	const i18n = getContext('i18n');
 
 	export let query = '';
+	export let prompts = [];
 	export let onSelect = (e) => {};
 
 	let selectedPromptIdx = 0;
 	export let filteredItems = [];
-	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
-	let items = [];
-
-	$: if (query !== undefined) {
-		clearTimeout(searchDebounceTimer);
-		searchDebounceTimer = setTimeout(() => {
-			getItems();
-		}, 200);
-	}
-
-	onDestroy(() => {
-		clearTimeout(searchDebounceTimer);
-	});
-
-	$: filteredItems = items
+	$: filteredItems = prompts
 		.filter((p) => p.command.toLowerCase().includes(query.toLowerCase()))
-		.sort((a, b) => a.name.localeCompare(b.name));
+		.sort((a, b) => a.title.localeCompare(b.title));
 
 	$: if (query) {
 		selectedPromptIdx = 0;
 	}
-
-	const getItems = async () => {
-		const res = await getPrompts(localStorage.token).catch(() => null);
-		if (res) {
-			items = res;
-		}
-	};
 
 	export const selectUp = () => {
 		selectedPromptIdx = Math.max(0, selectedPromptIdx - 1);
@@ -64,7 +42,7 @@
 {#if filteredItems.length > 0}
 	<div class=" space-y-0.5 scrollbar-hidden">
 		{#each filteredItems as promptItem, promptIdx}
-			<Tooltip content={promptItem.name} placement="top-start">
+			<Tooltip content={promptItem.title} placement="top-start">
 				<button
 					class=" px-3 py-1 rounded-xl w-full text-left {promptIdx === selectedPromptIdx
 						? '  bg-gray-50 dark:bg-gray-800 selected-command-option-button'
@@ -84,7 +62,7 @@
 					</span>
 
 					<span class=" text-xs text-gray-600 dark:text-gray-100">
-						{promptItem.name}
+						{promptItem.title}
 					</span>
 				</button>
 			</Tooltip>

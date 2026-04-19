@@ -31,7 +31,6 @@
 		resetKnowledgeById,
 		updateFileFromKnowledgeById,
 		updateKnowledgeById,
-		updateKnowledgeAccessGrants,
 		searchKnowledgeFilesById
 	} from '$lib/apis/knowledge';
 	import { processWeb, processYoutubeVideo } from '$lib/apis/retrieval';
@@ -76,8 +75,6 @@
 			file_ids: string[];
 		};
 		files: any[];
-		access_grants?: any[];
-		write_access?: boolean;
 	};
 
 	let id = null;
@@ -91,8 +88,6 @@
 	let inputFiles = null;
 
 	let query = '';
-	let searchDebounceTimer: ReturnType<typeof setTimeout>;
-
 	let viewOption = null;
 	let sortKey = null;
 	let direction = null;
@@ -110,18 +105,9 @@
 		await getItemsPage();
 	};
 
-	// Debounce only query changes
-	$: if (query !== undefined) {
-		clearTimeout(searchDebounceTimer);
-
-		searchDebounceTimer = setTimeout(() => {
-			getItemsPage();
-		}, 300);
-	}
-
-	// Immediate response to filter/pagination changes
 	$: if (
 		knowledgeId !== null &&
+		query !== undefined &&
 		viewOption !== undefined &&
 		sortKey !== undefined &&
 		direction !== undefined &&
@@ -617,7 +603,7 @@
 				...knowledge,
 				name: knowledge.name,
 				description: knowledge.description,
-				access_grants: knowledge.access_grants ?? []
+				access_control: knowledge.access_control
 			}).catch((e) => {
 				toast.error(`${e}`);
 			});
@@ -748,9 +734,6 @@
 
 		if (res) {
 			knowledge = res;
-			if (!Array.isArray(knowledge?.access_grants)) {
-				knowledge.access_grants = [];
-			}
 			knowledgeId = knowledge?.id;
 		} else {
 			goto('/workspace/knowledge');
@@ -763,7 +746,6 @@
 	});
 
 	onDestroy(() => {
-		clearTimeout(searchDebounceTimer);
 		mediaQuery?.removeEventListener('change', handleMediaQuery);
 		const dropZone = document.querySelector('body');
 		dropZone?.removeEventListener('dragover', onDragOver);
@@ -834,18 +816,11 @@
 	{#if id && knowledge}
 		<AccessControlModal
 			bind:show={showAccessControlModal}
-			bind:accessGrants={knowledge.access_grants}
+			bind:accessControl={knowledge.access_control}
 			share={$user?.permissions?.sharing?.knowledge || $user?.role === 'admin'}
 			sharePublic={$user?.permissions?.sharing?.public_knowledge || $user?.role === 'admin'}
-			shareUsers={($user?.permissions?.access_grants?.allow_users ?? true) ||
-				$user?.role === 'admin'}
-			onChange={async () => {
-				try {
-					await updateKnowledgeAccessGrants(localStorage.token, id, knowledge.access_grants ?? []);
-					toast.success($i18n.t('Saved'));
-				} catch (error) {
-					toast.error(`${error}`);
-				}
+			onChange={() => {
+				changeDebounceHandler();
 			}}
 			accessRoles={['read', 'write']}
 		/>
@@ -856,9 +831,8 @@
 						<div class="w-full flex justify-between items-center">
 							<input
 								type="text"
-								class="text-left w-full text-lg bg-transparent outline-hidden flex-1"
+								class="text-left w-full font-medium text-lg font-primary bg-transparent outline-hidden flex-1"
 								bind:value={knowledge.name}
-								aria-label={$i18n.t('Knowledge Name')}
 								placeholder={$i18n.t('Knowledge Name')}
 								disabled={!knowledge?.write_access}
 								on:input={() => {
@@ -906,7 +880,6 @@
 							type="text"
 							class="text-left text-xs w-full text-gray-500 bg-transparent outline-hidden"
 							bind:value={knowledge.description}
-							aria-label={$i18n.t('Knowledge Description')}
 							placeholder={$i18n.t('Knowledge Description')}
 							disabled={!knowledge?.write_access}
 							on:input={() => {
@@ -929,8 +902,7 @@
 					<input
 						class=" w-full text-sm pr-4 py-1 rounded-r-xl outline-hidden bg-transparent"
 						bind:value={query}
-						aria-label={$i18n.t('Search Collection')}
-						placeholder={$i18n.t('Search Collection')}
+						placeholder={`${$i18n.t('Search Collection')}`}
 						on:focus={() => {
 							selectedFileId = null;
 						}}
@@ -974,7 +946,7 @@
 					>
 						<DropdownOptions
 							align="start"
-							className="flex shrink-0 items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl placeholder-gray-400 outline-hidden focus:outline-hidden"
+							className="flex w-full items-center gap-2 truncate px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl  placeholder-gray-400 outline-hidden focus:outline-hidden"
 							bind:value={viewOption}
 							items={[
 								{ value: null, label: $i18n.t('All') },
@@ -1076,7 +1048,6 @@
 										<div class="mr-2">
 											<button
 												class="w-full text-left text-sm p-1.5 rounded-lg dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-gray-850"
-												aria-label={$i18n.t('Close')}
 												on:click={() => {
 													selectedFileId = null;
 													selectedFile = null;
@@ -1114,7 +1085,6 @@
 											class="w-full h-full text-sm outline-none resize-none px-3 py-2"
 											bind:value={selectedFileContent}
 											disabled={!knowledge?.write_access}
-											aria-label={$i18n.t('File content')}
 											placeholder={$i18n.t('Add content here')}
 										/>
 									{/key}

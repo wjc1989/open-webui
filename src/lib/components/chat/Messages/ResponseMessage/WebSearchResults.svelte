@@ -67,7 +67,7 @@
 						<div class="w-fit">
 							<img
 								src="https://www.google.com/s2/favicons?sz=32&domain={item.link}"
-								alt="{item?.title ?? item.link} favicon"
+								alt="favicon"
 								class="size-3.5"
 							/>
 						</div>
@@ -107,7 +107,7 @@
 						<div class="w-fit">
 							<img
 								src="https://www.google.com/s2/favicons?sz=32&domain={url}"
-								alt="{url} favicon"
+								alt="favicon"
 								class="size-3.5"
 							/>
 						</div>

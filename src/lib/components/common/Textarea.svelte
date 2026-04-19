@@ -10,7 +10,6 @@
 	export let readonly = false;
 	export let className =
 		'w-full rounded-lg px-3.5 py-2 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden  h-full';
-	export let ariaLabel = null;
 
 	export let onInput = () => {};
 	export let onBlur = () => {};
@@ -54,7 +53,6 @@
 	bind:this={textareaElement}
 	bind:value
 	{placeholder}
-	aria-label={ariaLabel || placeholder}
 	class={className}
 	style="field-sizing: content;"
 	{rows}

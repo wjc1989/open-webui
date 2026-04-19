@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { DropdownMenu } from 'bits-ui';
+	import { flyAndScale } from '$lib/utils/transitions';
 	import { getContext } from 'svelte';
 
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
@@ -35,8 +37,8 @@
 
 <Dropdown
 	bind:show
-	onOpenChange={(state) => {
-		if (state === false) {
+	on:change={(e) => {
+		if (e.detail === false) {
 			onClose();
 		}
 	}}
@@ -46,11 +48,15 @@
 	</Tooltip>
 
 	<div slot="content">
-		<div
-			class="min-w-[170px] rounded-xl p-1 border border-gray-100 dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-sm"
+		<DropdownMenu.Content
+			class="w-full max-w-[170px] rounded-xl p-1 border border-gray-100  dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-sm"
+			sideOffset={-2}
+			side="bottom"
+			align="start"
+			transition={flyAndScale}
 		>
-			<button
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+			<DropdownMenu.Item
+				class="flex  gap-2  items-center px-3 py-1.5 text-sm  font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 				on:click={() => {
 					hideHandler();
 				}}
@@ -99,10 +105,10 @@
 						{$i18n.t('Hide Model')}
 					{/if}
 				</div>
-			</button>
+			</DropdownMenu.Item>
 
-			<button
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+			<DropdownMenu.Item
+				class="flex  gap-2  items-center px-3 py-1.5 text-sm  font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 				on:click={() => {
 					pinModelHandler(model?.id);
 				}}
@@ -120,10 +126,10 @@
 						{$i18n.t('Keep in Sidebar')}
 					{/if}
 				</div>
-			</button>
+			</DropdownMenu.Item>
 
-			<button
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm  font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 				on:click={() => {
 					copyLinkHandler();
 				}}
@@ -131,23 +137,21 @@
 				<Link />
 
 				<div class="flex items-center">{$i18n.t('Copy Link')}</div>
-			</button>
+			</DropdownMenu.Item>
 
-			{#if model?.is_active ?? true}
-				<button
-					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
-					on:click={() => {
-						cloneHandler();
-					}}
-				>
-					<DocumentDuplicate />
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm  font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={() => {
+					cloneHandler();
+				}}
+			>
+				<DocumentDuplicate />
 
-					<div class="flex items-center">{$i18n.t('Clone')}</div>
-				</button>
-			{/if}
+				<div class="flex items-center">{$i18n.t('Clone')}</div>
+			</DropdownMenu.Item>
 
-			<button
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm  font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 				on:click={() => {
 					exportHandler();
 				}}
@@ -155,7 +159,7 @@
 				<Download />
 
 				<div class="flex items-center">{$i18n.t('Export')}</div>
-			</button>
-		</div>
+			</DropdownMenu.Item>
+		</DropdownMenu.Content>
 	</div>
 </Dropdown>

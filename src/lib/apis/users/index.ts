@@ -300,10 +300,10 @@ export const updateUserSettings = async (token: string, settings: object) => {
 	return res;
 };
 
-export const getUserInfoById = async (token: string, userId: string) => {
+export const getUserById = async (token: string, userId: string) => {
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/users/${userId}/info`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/users/${userId}`, {
 		method: 'GET',
 		headers: {
 			'Content-Type': 'application/json',

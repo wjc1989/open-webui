@@ -120,7 +120,7 @@ export const createNoteHandler = async (title: string, md?: string, html?: strin
 			}
 		},
 		meta: null,
-		access_grants: []
+		access_control: {}
 	}).catch((error) => {
 		toast.error(`${error}`);
 		return null;

@@ -50,17 +50,11 @@
 	let editedFiles = [];
 
 	let messageEditTextAreaElement: HTMLTextAreaElement;
-	let editScrollContainer: HTMLDivElement;
 
-	let message = structuredClone(history.messages[messageId]);
+	let message = JSON.parse(JSON.stringify(history.messages[messageId]));
 	$: if (history.messages) {
-		const source = history.messages[messageId];
-		if (source) {
-			if (message.content !== source.content) {
-				message = structuredClone(source);
-			} else if (JSON.stringify(message) !== JSON.stringify(source)) {
-				message = structuredClone(source);
-			}
+		if (JSON.stringify(message) !== JSON.stringify(history.messages[messageId])) {
+			message = JSON.parse(JSON.stringify(history.messages[messageId]));
 		}
 	}
 
@@ -79,14 +73,10 @@
 		await tick();
 
 		if (messageEditTextAreaElement) {
-			const messagesContainer = document.getElementById('messages-container');
-			const savedScrollTop = messagesContainer?.scrollTop;
-
 			messageEditTextAreaElement.style.height = '';
 			messageEditTextAreaElement.style.height = `${messageEditTextAreaElement.scrollHeight}px`;
 
-			if (messagesContainer) messagesContainer.scrollTop = savedScrollTop;
-			messageEditTextAreaElement?.focus({ preventScroll: true });
+			messageEditTextAreaElement?.focus();
 		}
 	};
 
@@ -130,14 +120,11 @@
 	class=" flex w-full user-message group"
 	dir={$settings.chatDirection}
 	id="message-{message.id}"
-	style="scroll-margin-top: 3rem;"
 >
 	{#if !($settings?.chatBubble ?? true)}
 		<div class={`shrink-0 ltr:mr-3 rtl:ml-3 mt-1`}>
 			<ProfileImage
-				src={user?.id
-					? `${WEBUI_API_BASE_URL}/users/${user.id}/profile/image`
-					: `${WEBUI_BASE_URL}/static/favicon.png`}
+				src={`${WEBUI_API_BASE_URL}/users/${user.id}/profile/image`}
 				className={'size-8 user-message-profile-image'}
 			/>
 		</div>
@@ -149,8 +136,8 @@
 					{#if message.user}
 						{$i18n.t('You')}
 						<span class=" text-gray-500 text-sm font-medium">{message?.user ?? ''}</span>
-					{:else if $settings.showUsername || $_user?.name !== user?.name}
-						{user?.name ?? $i18n.t('You')}
+					{:else if $settings.showUsername || $_user.name !== user.name}
+						{user.name}
 					{:else}
 						{$i18n.t('You')}
 					{/if}
@@ -296,22 +283,15 @@
 						</div>
 					{/if}
 
-					<div class="max-h-96 overflow-auto" bind:this={editScrollContainer}>
+					<div class="max-h-96 overflow-auto">
 						<textarea
 							id="message-edit-{message.id}"
 							bind:this={messageEditTextAreaElement}
 							class=" bg-transparent outline-hidden w-full resize-none"
 							bind:value={editedContent}
 							on:input={(e) => {
-								const messagesContainer = document.getElementById('messages-container');
-								const savedScrollTop = messagesContainer?.scrollTop;
-								const savedInnerScroll = editScrollContainer?.scrollTop;
-
 								e.target.style.height = '';
 								e.target.style.height = `${e.target.scrollHeight}px`;
-
-								if (messagesContainer) messagesContainer.scrollTop = savedScrollTop;
-								if (editScrollContainer) editScrollContainer.scrollTop = savedInnerScroll;
 							}}
 							on:keydown={(e) => {
 								if (e.key === 'Escape') {

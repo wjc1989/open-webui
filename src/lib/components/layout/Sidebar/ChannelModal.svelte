@@ -23,7 +23,7 @@
 	export let onSubmit: Function = () => {};
 	export let onUpdate: Function = () => {};
 
-	export let channel: any = null;
+	export let channel = null;
 	export let edit = false;
 
 	let channelTypes = ['group', 'dm'];
@@ -31,7 +31,7 @@
 	let name = '';
 
 	let isPrivate = null;
-	let accessGrants = [];
+	let accessControl = {};
 
 	let groupIds = [];
 	let userIds = [];
@@ -65,8 +65,8 @@
 		await onSubmit({
 			type: type,
 			name: name.replace(/\s/g, '-'),
-			is_private: type === 'group' ? (isPrivate ?? true) : null,
-			access_grants: type === '' ? accessGrants : [],
+			is_private: type === 'group' ? isPrivate : null,
+			access_control: type === '' ? accessControl : {},
 			group_ids: groupIds,
 			user_ids: userIds
 		});
@@ -85,12 +85,8 @@
 
 		if (channel) {
 			name = channel?.name ?? '';
-			if (type === 'group') {
-				isPrivate = typeof channel?.is_private === 'boolean' ? channel.is_private : true;
-			} else {
-				isPrivate = null;
-			}
-			accessGrants = channel?.access_grants ?? [];
+			isPrivate = channel?.is_private ?? null;
+			accessControl = channel.access_control;
 			userIds = channel?.user_ids ?? [];
 		}
 	};
@@ -106,14 +102,8 @@
 
 	const deleteHandler = async () => {
 		showDeleteConfirmDialog = false;
-		if (!channel?.id) {
-			show = false;
-			return;
-		}
 
-		const channelId = channel.id;
-
-		const res = await deleteChannelById(localStorage.token, channelId).catch((error) => {
+		const res = await deleteChannelById(localStorage.token, channel.id).catch((error) => {
 			toast.error(error.message);
 		});
 
@@ -121,7 +111,7 @@
 			toast.success($i18n.t('Channel deleted successfully'));
 			onUpdate();
 
-			if ($page.url.pathname === `/channels/${channelId}`) {
+			if ($page.url.pathname === `/channels/${channel.id}`) {
 				goto('/');
 			}
 		}
@@ -132,7 +122,7 @@
 	const resetHandler = () => {
 		type = '';
 		name = '';
-		accessGrants = [];
+		accessControl = {};
 		userIds = [];
 		loading = false;
 	};
@@ -236,11 +226,11 @@
 					{#if type !== 'dm'}
 						<div class="-mx-2 mb-1 mt-2.5 px-2">
 							{#if type === ''}
-								<AccessControl bind:accessGrants accessRoles={['read', 'write']} />
+								<AccessControl bind:accessControl accessRoles={['read', 'write']} />
 							{:else if type === 'group'}
 								<Visibility
 									state={isPrivate ? 'private' : 'public'}
-									onChange={(value: string) => {
+									onChange={(value) => {
 										if (value === 'private') {
 											isPrivate = true;
 										} else {

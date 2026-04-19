@@ -25,23 +25,8 @@
 
 	const init = () => {
 		const _id = token?.id;
-		triggerChar = token?.triggerChar ?? '@';
-
-		if (triggerChar === '$') {
-			// Skill mention: id format is "skillId|label"
-			const pipeIdx = _id?.indexOf('|') ?? -1;
-			if (pipeIdx > 0) {
-				id = _id.substring(0, pipeIdx);
-				label = _id.substring(pipeIdx + 1);
-			} else {
-				id = _id;
-				label = _id;
-			}
-			idType = null;
-			return;
-		}
-
 		// split by : and take first part as idType and second part as id
+
 		const parts = _id?.split(':');
 		if (parts) {
 			idType = parts[0];
@@ -52,6 +37,7 @@
 		}
 
 		label = token?.label ?? id;
+		triggerChar = token?.triggerChar ?? '@';
 
 		if (triggerChar === '#') {
 			if (idType === 'C') {

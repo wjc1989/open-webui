@@ -38,13 +38,15 @@
 <Modal bind:show size="xl">
 	<div class="px-6 pt-5 dark:text-white text-black">
 		<div class="flex justify-between items-start">
-			<h2 class="text-xl font-medium m-0">
+			<div class="text-xl font-medium">
 				{$i18n.t("What's New in")}
 				{$WEBUI_NAME}
 				<Confetti x={[-1, -0.25]} y={[0, 0.5]} />
-			</h2>
+			</div>
 			<button class="self-center" on:click={closeModal} aria-label={$i18n.t('Close')}>
-				<XMark className={'size-5'} />
+				<XMark className={'size-5'}>
+					<p class="sr-only">{$i18n.t('Close')}</p>
+				</XMark>
 			</button>
 		</div>
 		<div class="flex items-center mt-1">
@@ -62,9 +64,9 @@
 				{#if changelog}
 					{#each Object.keys(changelog) as version}
 						<div class=" mb-3 pr-2">
-							<h3 class="font-semibold text-xl mb-1 dark:text-white m-0">
+							<div class="font-semibold text-xl mb-1 dark:text-white">
 								v{version} - {changelog[version].date}
-							</h3>
+							</div>
 
 							<hr class="border-gray-50/50 dark:border-gray-850/50 my-2" />
 

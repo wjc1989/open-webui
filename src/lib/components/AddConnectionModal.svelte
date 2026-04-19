@@ -14,7 +14,6 @@
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
-	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Tags from './common/Tags.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
@@ -43,7 +42,6 @@
 	let prefixId = '';
 	let enable = true;
 	let apiVersion = '';
-	let apiType = ''; // '' = chat completions (default), 'responses' = Responses API
 
 	let headers = '';
 
@@ -53,7 +51,6 @@
 	let modelIds = [];
 
 	let loading = false;
-	let showDeleteConfirmDialog = false;
 
 	const verifyOllamaHandler = async () => {
 		// remove trailing slash from url
@@ -186,8 +183,7 @@
 				connection_type: connectionType,
 				auth_type,
 				headers: headers ? JSON.parse(headers) : undefined,
-				...(!ollama && azure ? { azure: true, api_version: apiVersion } : {}),
-				...(apiType ? { api_type: apiType } : {})
+				...(!ollama && azure ? { azure: true, api_version: apiVersion } : {})
 			}
 		};
 
@@ -225,7 +221,6 @@
 				connectionType = connection.config?.connection_type ?? 'external';
 				azure = connection.config?.azure ?? false;
 				apiVersion = connection.config?.api_version ?? '';
-				apiType = connection.config?.api_type ?? '';
 			}
 		}
 	};
@@ -311,27 +306,14 @@
 										bind:value={url}
 										placeholder={$i18n.t('API Base URL')}
 										autocomplete="off"
-										list={ollama ? undefined : 'suggestions'}
 										required
 									/>
-
-									{#if !ollama}
-										<datalist id="suggestions">
-											<option value="https://api.openai.com/v1" />
-											<option value="https://api.anthropic.com/v1" />
-											<option value="https://generativelanguage.googleapis.com/v1beta/openai" />
-											<option value="https://api.mistral.ai/v1" />
-											<option value="https://api.groq.com/openai/v1" />
-											<option value="https://openrouter.ai/api/v1" />
-											<option value="https://api.x.ai/v1" />
-										</datalist>
-									{/if}
 								</div>
 							</div>
 
 							<Tooltip content={$i18n.t('Verify Connection')} className="self-end -mb-1">
 								<button
-									class="self-center p-1 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-850 rounded-lg transition"
+									class="self-center p-1 bg-transparent hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-850 rounded-lg transition"
 									on:click={() => {
 										verifyHandler();
 									}}
@@ -524,7 +506,7 @@
 									<div class="flex-1">
 										<input
 											id="api-version-input"
-											class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
+											class={`w-full text-sm bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-700 ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
 											type="text"
 											bind:value={apiVersion}
 											placeholder={$i18n.t('API Version')}
@@ -532,45 +514,6 @@
 											required
 										/>
 									</div>
-								</div>
-							</div>
-						{/if}
-
-						{#if !ollama && !direct}
-							<div class="flex flex-row justify-between items-center w-full mt-1">
-								<label
-									for="api-type-toggle"
-									class={`mb-0.5 text-xs text-gray-500
-							${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-									>{$i18n.t('API Type')}</label
-								>
-
-								<div>
-									<button
-										on:click={() => {
-											apiType = apiType === 'responses' ? '' : 'responses';
-										}}
-										type="button"
-										id="api-type-toggle"
-										class=" text-xs text-gray-700 dark:text-gray-300"
-									>
-										{#if apiType === 'responses'}
-											<Tooltip
-												className="flex items-center gap-1"
-												content={$i18n.t(
-													'This feature is currently experimental and may not work as expected.'
-												)}
-											>
-												<span class=" text-gray-400 dark:text-gray-600"
-													>{$i18n.t('Experimental')}</span
-												>
-
-												{$i18n.t('Responses')}
-											</Tooltip>
-										{:else}
-											{$i18n.t('Chat Completions')}
-										{/if}
-									</button>
 								</div>
 							</div>
 						{/if}
@@ -686,23 +629,22 @@
 						</div>
 					</div>
 
-					<div class="flex justify-between items-center pt-3 text-sm font-medium">
-						<div>
-							{#if edit}
-								<button
-									class="px-1 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
-									type="button"
-									on:click={() => {
-										showDeleteConfirmDialog = true;
-									}}
-								>
-									{$i18n.t('Delete')}
-								</button>
-							{/if}
-						</div>
+					<div class="flex justify-end pt-3 text-sm font-medium gap-1.5">
+						{#if edit}
+							<button
+								class="px-3.5 py-1.5 text-sm font-medium dark:bg-black dark:hover:bg-gray-900 dark:text-white bg-white text-black hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
+								type="button"
+								on:click={() => {
+									onDelete();
+									show = false;
+								}}
+							>
+								{$i18n.t('Delete')}
+							</button>
+						{/if}
 
 						<button
-							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex items-center gap-2 whitespace-nowrap {loading
+							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center {loading
 								? ' cursor-not-allowed'
 								: ''}"
 							type="submit"
@@ -711,9 +653,9 @@
 							{$i18n.t('Save')}
 
 							{#if loading}
-								<span class="shrink-0">
+								<div class="ml-2 self-center">
 									<Spinner />
-								</span>
+								</div>
 							{/if}
 						</button>
 					</div>
@@ -722,15 +664,3 @@
 		</div>
 	</div>
 </Modal>
-
-<ConfirmDialog
-	bind:show={showDeleteConfirmDialog}
-	message={$i18n.t(
-		'Are you sure you want to delete this connection? This action cannot be undone.'
-	)}
-	confirmLabel={$i18n.t('Delete')}
-	on:confirm={() => {
-		onDelete();
-		show = false;
-	}}
-/>

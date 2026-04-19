@@ -22,7 +22,5 @@
 		</select>
 	</div>
 
-	<div>
-		<ManageOllama urlIdx={selectedUrlIdx} />
-	</div>
+	<ManageOllama urlIdx={selectedUrlIdx} />
 {/if}
