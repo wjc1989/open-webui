@@ -72,8 +72,20 @@
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
 </script>
+<!--translate-y-6-->
+<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20  py-24 text-center" style="margin-bottom:0px;
+    padding-bottom: 30px;
+    padding-top: 30px;">
+	<div class="mb-3 flex justify-center" in:fade={{ duration: 150 }}>
+		<img
+			src="/static/favicon.png"
+			alt="Placeholder"
+			class="size-12 @sm:size-14 rounded-xl"
+			style="width:200px;height:200px;"
+			draggable="false"
+		/>
+	</div>
 
-<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
