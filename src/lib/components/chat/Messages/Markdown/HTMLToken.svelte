@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DOMPurify from 'dompurify';
+	import { getContext } from 'svelte';
 	import type { Token } from 'marked';
 
 	import { WEBUI_BASE_URL } from '$lib/constants';
@@ -8,7 +9,53 @@
 	export let id: string;
 	export let token: Token;
 
+	const i18n = getContext('i18n');
+
 	let html: string | null = null;
+	let jumpIframe: HTMLIFrameElement | null = null;
+
+	const parseJumpToken = (text: string) => {
+		const match = text.match(/<jump\s+[^>]*url="([^"]+)"[^>]*>/i);
+		const heightMatch = text.match(/<jump\s+[^>]*height="(\d+)"[^>]*>/i);
+		if (!match?.[1]) {
+			return null;
+		}
+
+		return {
+			src: match[1],
+			height: heightMatch?.[1] ? Number.parseInt(heightMatch[1], 10) : 600
+		};
+	};
+
+	const openJumpContent = async (url: string) => {
+		const iframe = jumpIframe;
+
+		if (iframe) {
+			try {
+				if (iframe.requestFullscreen) {
+					await iframe.requestFullscreen();
+					return;
+				}
+
+				const iframeWithVendorFullscreen = iframe as HTMLIFrameElement & {
+					webkitRequestFullscreen?: () => Promise<void> | void;
+					msRequestFullscreen?: () => Promise<void> | void;
+				};
+
+				if (iframeWithVendorFullscreen.webkitRequestFullscreen) {
+					iframeWithVendorFullscreen.webkitRequestFullscreen();
+					return;
+				}
+
+				if (iframeWithVendorFullscreen.msRequestFullscreen) {
+					iframeWithVendorFullscreen.msRequestFullscreen();
+					return;
+				}
+			} catch {}
+			}
+
+		window.open(url, '_blank', 'noopener,noreferrer');
+	};
 
 	$: if (token.type === 'html' && token?.text) {
 		html = DOMPurify.sanitize(token.text);
@@ -75,7 +122,6 @@
 				src={iframeSrc}
 				title="Embedded content"
 				frameborder="0"
-				sandbox
 				on:load={(e) => {
 					try {
 						e.currentTarget.style.height =
@@ -83,6 +129,31 @@
 					} catch {}
 				}}
 			></iframe>
+		{:else}
+			{token.text}
+		{/if}
+	{:else if token.text && token.text.includes('<jump')}
+		{@const jumpContent = parseJumpToken(token.text)}
+		{#if jumpContent?.src}
+			<div class="w-full my-2">
+				<iframe
+					bind:this={jumpIframe}
+					class="w-full rounded-lg border border-gray-200 dark:border-gray-700"
+					src={jumpContent.src}
+					title="Jump content"
+					frameborder="0"
+					height={String(jumpContent.height)}
+				></iframe>
+				<div class="mt-2 flex justify-end">
+					<button
+						type="button"
+						class="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
+						on:click={() => openJumpContent(jumpContent.src)}
+					>
+						{$i18n?.t('Open') ?? 'Open'}
+					</button>
+				</div>
+			</div>
 		{:else}
 			{token.text}
 		{/if}
@@ -112,9 +183,6 @@
 				src={`${WEBUI_BASE_URL}/api/v1/files/${fileId}/content/html`}
 				title="Content"
 				frameborder="0"
-				sandbox="allow-scripts allow-downloads{($settings?.iframeSandboxAllowForms ?? false)
-					? ' allow-forms'
-					: ''}{($settings?.iframeSandboxAllowSameOrigin ?? false) ? ' allow-same-origin' : ''}"
 				referrerpolicy="strict-origin-when-cross-origin"
 				allowfullscreen
 				width="100%"
